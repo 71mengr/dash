@@ -87,6 +87,197 @@ static RPCHelpMan listaddressbalances()
 }
 
 
+static RPCHelpMan setkycprovider()
+{
+    return RPCHelpMan{"setkycprovider",
+        "\nConfigure the KYC provider for this wallet.\n",
+        {
+            {"provider", RPCArg::Type::STR, RPCArg::Optional::NO, "Provider name (coinfirm, vc)"},
+            {"api_key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "API key for provider"},
+            {"api_secret", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "API secret for provider"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "provider", "Configured provider"},
+                {RPCResult::Type::BOOL, "success", "Whether configuration succeeded"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("setkycprovider", "coinfirm my_api_key my_api_secret")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::string provider_str = request.params[0].get_str();
+    KYCProviderType type;
+    
+    if (provider_str == "coinfirm") {
+        type = KYCProviderType::COINFIRM;
+    } else if (provider_str == "vc") {
+        type = KYCProviderType::CUSTOM_VC;
+    } else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown provider. Use 'coinfirm' or 'vc'");
+    }
+    
+    std::map<std::string, std::string> config;
+    if (!request.params[1].isNull()) {
+        config["api_key"] = request.params[1].get_str();
+    }
+    if (!request.params[2].isNull()) {
+        config["api_secret"] = request.params[2].get_str();
+    }
+    
+    bool success = pwallet->SetKYCProvider(type, config);
+    
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("provider", provider_str);
+    result.pushKV("success", success);
+    
+    return result;
+},
+    };
+}
+
+static RPCHelpMan startkyc()
+{
+    return RPCHelpMan{"startkyc",
+        "\nStart KYC verification process.\n",
+        {
+            {"level", RPCArg::Type::STR, RPCArg::Optional::NO, "Verification level (basic, advanced, full)"},
+            {"callback_url", RPCArg::Type::STR, RPCArg::Default{""}, "URL for KYC provider to call back"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "session_id", "KYC session ID"},
+                {RPCResult::Type::STR, "verification_url", "URL to complete KYC"},
+                {RPCResult::Type::STR, "status", "Session status"},
+                {RPCResult::Type::NUM, "expires_at", "Expiration timestamp"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("startkyc", "basic")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::string level_str = request.params[0].get_str();
+    KYCLevel level;
+    
+    if (level_str == "basic") {
+        level = KYCLevel::BASIC;
+    } else if (level_str == "advanced") {
+        level = KYCLevel::ADVANCED;
+    } else if (level_str == "full") {
+        level = KYCLevel::FULL;
+    } else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid level. Use 'basic', 'advanced', or 'full'");
+    }
+    
+    std::string callback_url = request.params[1].isNull() ? "" : request.params[1].get_str();
+    
+    auto session_res = pwallet->StartKYCVerification(level, callback_url);
+    if (!session_res) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(session_res).original);
+    }
+    
+    const auto& session = *session_res;
+    
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("session_id", session.session_id);
+    result.pushKV("verification_url", session.url);
+    result.pushKV("status", session.status);
+    result.pushKV("expires_at", session.expires_at);
+    
+    return result;
+},
+    };
+}
+
+static RPCHelpMan checkkyc()
+{
+    return RPCHelpMan{"checkkyc",
+        "\nCheck status of KYC verification.\n",
+        {
+            {"session_id", RPCArg::Type::STR, RPCArg::Optional::NO, "KYC session ID"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "session_id", "KYC session ID"},
+                {RPCResult::Type::STR, "status", "Session status"},
+                {RPCResult::Type::BOOL, "completed", "Whether verification is complete"},
+                {RPCResult::Type::BOOL, "wallet_verified", "Whether wallet is now verified"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("checkkyc", "coinfirm_abc123")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::string session_id = request.params[0].get_str();
+    
+    auto session_res = pwallet->CheckKYCStatus(session_id);
+    if (!session_res) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(session_res).original);
+    }
+    
+    const auto& session = *session_res;
+    
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("session_id", session.session_id);
+    result.pushKV("status", session.status);
+    result.pushKV("completed", session.status == "completed");
+    result.pushKV("wallet_verified", pwallet->IsVerified());
+    
+    return result;
+},
+    };
+}
+
+static RPCHelpMan completekyc()
+{
+    return RPCHelpMan{"completekyc",
+        "\nComplete KYC verification and import credential.\n",
+        {
+            {"session_id", RPCArg::Type::STR, RPCArg::Optional::NO, "KYC session ID"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "success", "Whether verification was completed"},
+                {RPCResult::Type::BOOL, "wallet_verified", "Whether wallet is now verified"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("completekyc", "coinfirm_abc123")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::string session_id = request.params[0].get_str();
+    
+    bool success = pwallet->CompleteKYCVerification(session_id);
+    
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("success", success);
+    result.pushKV("wallet_verified", pwallet->IsVerified());
+    
+    return result;
+},
+    };
+}
+
 static RPCHelpMan setcoinjoinrounds()
 {
     return RPCHelpMan{"setcoinjoinrounds",
@@ -183,6 +374,14 @@ static RPCHelpMan getwalletinfo()
                                     {RPCResult::Type::NUM, "hdinternalkeyindex", "current internal childkey index"},
                             }},
                         }},
+                        {RPCResult::Type::OBJ, "verification", "Wallet verification status",
+                        {
+                            {RPCResult::Type::BOOL, "is_verified", "Whether wallet is KYC verified"},
+                            {RPCResult::Type::STR, "status", "Verification status (none, pending, basic, full, expired, revoked)"},
+                            {RPCResult::Type::BOOL, "can_generate_addresses", "Whether wallet can generate new addresses"},
+                            {RPCResult::Type::STR, "issuer", "Credential issuer", RPCResult::Optional::ALIAS},
+                            {RPCResult::Type::NUM_TIME, "expires_at", "Expiration timestamp", RPCResult::Optional::ALIAS},
+                        }},
                         {RPCResult::Type::BOOL, "private_keys_enabled", "false if privatekeys are disabled for this wallet (enforced watch-only wallet)"},
                         {RPCResult::Type::BOOL, "avoid_reuse", "whether this wallet tracks clean/dirty coins in terms of reuse"},
                         {RPCResult::Type::OBJ, "scanning", "current scanning details, or false if no scan is in progress",
@@ -271,6 +470,32 @@ static RPCHelpMan getwalletinfo()
     }
     obj.pushKV("descriptors", pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
     obj.pushKV("external_signer", pwallet->IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER));
+
+UniValue verification(UniValue::VOBJ);
+verification.pushKV("is_verified", pwallet->IsVerified());
+verification.pushKV("can_generate_addresses", pwallet->CanGenerateAddresses());
+
+std::string statusStr;
+switch (pwallet->GetVerificationStatus()) {
+    case CredentialStatus::NONE: statusStr = "none"; break;
+    case CredentialStatus::PENDING: statusStr = "pending"; break;
+    case CredentialStatus::VERIFIED_BASIC: statusStr = "basic"; break;
+    case CredentialStatus::VERIFIED_FULL: statusStr = "full"; break;
+    case CredentialStatus::EXPIRED: statusStr = "expired"; break;
+    case CredentialStatus::REVOKED: statusStr = "revoked"; break;
+    default: statusStr = "unknown";
+}
+verification.pushKV("status", statusStr);
+
+CWalletCredential cred = pwallet->GetCredential();
+CCredentialMetadata metadata = cred.GetMetadata();
+if (metadata.nExpiresAt > 0) {
+    verification.pushKV("issuer", metadata.issuer);
+    verification.pushKV("expires_at", metadata.nExpiresAt);
+    verification.pushKV("credential_type", metadata.credentialType);
+}
+
+obj.pushKV("verification", verification);
 
     AppendLastProcessedBlock(obj, *pwallet);
     return obj;
@@ -637,6 +862,7 @@ static RPCHelpMan createwallet()
             {"descriptors", RPCArg::Type::BOOL, RPCArg::Default{false}, "Create a native descriptor wallet. The wallet will use descriptors internally to handle address creation."},
             {"load_on_startup", RPCArg::Type::BOOL, RPCArg::Optional::OMITTED_NAMED_ARG, "Save wallet name to persistent settings and load on startup. True to add wallet to startup list, false to remove, null to leave unchanged."},
             {"external_signer", RPCArg::Type::BOOL, RPCArg::Default{false}, "Use an external signer such as a hardware wallet. Requires -signer to be configured. Wallet creation will fail if keys cannot be fetched. Requires disable_private_keys and descriptors set to true."},
+            {"require_verification", RPCArg::Type::BOOL, RPCArg::Default{false}, "Require KYC verification before allowing address generation."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -673,6 +899,7 @@ static RPCHelpMan createwallet()
         }
     }
 
+
     if (!request.params[4].isNull() && request.params[4].get_bool()) {
         flags |= WALLET_FLAG_AVOID_REUSE;
     }
@@ -693,6 +920,12 @@ static RPCHelpMan createwallet()
 #endif
     }
 
+bool require_verification = !request.params[8].isNull() && request.params[8].get_bool();
+if (require_verification) {
+    // Set a wallet flag or store in database that this wallet requires verification
+    // For now, we'll just log it
+    wallet->WalletLogPrintf("Wallet created with verification requirement\n");
+}
 #ifndef USE_BDB
     if (!(flags & WALLET_FLAG_DESCRIPTORS)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Compiled without bdb support (required for legacy wallets)");
@@ -992,6 +1225,237 @@ static RPCHelpMan upgradewallet()
     };
 }
 
+static RPCHelpMan setwalletcredential()
+{
+    return RPCHelpMan{"setwalletcredential",
+        "\nSets a test credential for development (DO NOT USE IN PRODUCTION).\n"
+        "\nThis is a temporary RPC for Phase 1 testing of the credential system.\n",
+        {
+            {"status", RPCArg::Type::STR, RPCArg::Optional::NO, "Verification status (basic, full, none)"},
+            {"issuer", RPCArg::Type::STR, RPCArg::Default{"test-issuer"}, "Issuer name"},
+            {"expiry_days", RPCArg::Type::NUM, RPCArg::Default{30}, "Days until credential expires"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "status", "Status set"},
+                {RPCResult::Type::STR, "message", "Success message"},
+                {RPCResult::Type::BOOL, "is_verified", "Whether wallet is now considered verified"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("setwalletcredential", "basic")
+            + HelpExampleCli("setwalletcredential", "full \"coinfirm\" 90")
+            + HelpExampleRpc("setwalletcredential", "\"basic\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    // Parse status
+    std::string statusStr = request.params[0].get_str();
+    CredentialStatus status;
+    if (statusStr == "basic") {
+        status = CredentialStatus::VERIFIED_BASIC;
+    } else if (statusStr == "full") {
+        status = CredentialStatus::VERIFIED_FULL;
+    } else if (statusStr == "none") {
+        status = CredentialStatus::NONE;
+    } else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid status. Use 'basic', 'full', or 'none'");
+    }
+
+    // Parse optional issuer
+    std::string issuer = "test-issuer";
+    if (!request.params[1].isNull()) {
+        issuer = request.params[1].get_str();
+    }
+
+    // Parse optional expiry days
+    int expiry_days = 30;
+    if (!request.params[2].isNull()) {
+        expiry_days = request.params[2].getInt<int>();
+        if (expiry_days < 1 || expiry_days > 365) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Expiry days must be between 1 and 365");
+        }
+    }
+
+    // Create credential data
+    // In a real implementation, this would be a proper JWT/CWT
+    // For testing, we'll create a simple structured credential
+    std::string credential_str = strprintf(
+        "{\"issuer\":\"%s\",\"status\":\"%s\",\"expiry\":%d,\"wallet\":\"%s\"}",
+        issuer, statusStr, GetTime() + (expiry_days * 24 * 60 * 60), pwallet->GetName()
+    );
+    
+    std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+
+    // Create credential object
+    CWalletCredential cred;
+    cred.SetCredential(credential_data);
+    cred.SetStatus(status);
+
+    // Set metadata
+    CCredentialMetadata metadata;
+    metadata.nExpiresAt = GetTime() + (expiry_days * 24 * 60 * 60);
+    metadata.issuer = issuer;
+    metadata.credentialType = statusStr;
+    metadata.credentialHash = Hash(credential_data);
+    cred.SetMetadata(metadata);
+
+    // Save to database
+    {
+        LOCK(pwallet->cs_wallet);
+        WalletBatch batch(pwallet->GetDatabase());
+        if (!batch.WriteCredential(cred)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to write credential to database");
+        }
+        
+        // Also write metadata separately for backup
+        batch.WriteCredentialMetadata(metadata);
+        batch.WriteCredentialStatus(status);
+
+        // Update wallet
+        pwallet->SetCredential(cred);
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("status", statusStr);
+    result.pushKV("message", strprintf("Credential set successfully. Expires in %d days.", expiry_days));
+    result.pushKV("is_verified", cred.IsVerified());
+    result.pushKV("wallet_name", pwallet->GetName());
+
+    return result;
+},
+    };
+}
+
+static RPCHelpMan getwalletcredential()
+{
+    return RPCHelpMan{"getwalletcredential",
+        "\nReturns the current wallet credential information.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "status", "Verification status (none, pending, basic, full, expired, revoked)"},
+                {RPCResult::Type::BOOL, "is_verified", "Whether wallet is verified"},
+                {RPCResult::Type::BOOL, "is_valid", "Whether credential is valid (not expired/revoked)"},
+                {RPCResult::Type::STR, "issuer", "Credential issuer", RPCResult::Optional::ALIAS},
+                {RPCResult::Type::NUM_TIME, "expires_at", "Expiration timestamp", RPCResult::Optional::ALIAS},
+                {RPCResult::Type::STR, "credential_type", "Type of credential", RPCResult::Optional::ALIAS},
+                {RPCResult::Type::STR_HEX, "credential_hash", "Hash of credential data", RPCResult::Optional::ALIAS},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("getwalletcredential", "")
+            + HelpExampleRpc("getwalletcredential", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    LOCK(pwallet->cs_wallet);
+
+    CWalletCredential cred = pwallet->GetCredential();
+    CCredentialMetadata metadata = cred.GetMetadata();
+
+    UniValue result(UniValue::VOBJ);
+    
+    // Convert status to string
+    std::string statusStr;
+    switch (cred.GetStatus()) {
+        case CredentialStatus::NONE: statusStr = "none"; break;
+        case CredentialStatus::PENDING: statusStr = "pending"; break;
+        case CredentialStatus::VERIFIED_BASIC: statusStr = "basic"; break;
+        case CredentialStatus::VERIFIED_FULL: statusStr = "full"; break;
+        case CredentialStatus::EXPIRED: statusStr = "expired"; break;
+        case CredentialStatus::REVOKED: statusStr = "revoked"; break;
+        default: statusStr = "unknown";
+    }
+    
+    result.pushKV("status", statusStr);
+    result.pushKV("is_verified", cred.IsVerified());
+    result.pushKV("is_valid", cred.IsValid());
+    
+    // Add metadata if available
+    if (metadata.nExpiresAt > 0) {
+        result.pushKV("expires_at", metadata.nExpiresAt);
+        result.pushKV("issuer", metadata.issuer);
+        result.pushKV("credential_type", metadata.credentialType);
+        if (!metadata.credentialHash.IsNull()) {
+            result.pushKV("credential_hash", metadata.credentialHash.GetHex());
+        }
+    }
+
+    return result;
+},
+    };
+}
+
+static RPCHelpMan importcredential()
+{
+    return RPCHelpMan{"importcredential",
+        "\nImport a KYC verification credential into the wallet.\n"
+        "After successful import, the wallet will be able to generate addresses.\n",
+        {
+            {"credential", RPCArg::Type::STR, RPCArg::Optional::NO, "The verification credential (JWT format)"},
+            {"issuer", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Issuer name (if not embedded in credential)"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "status", "Result status"},
+                {RPCResult::Type::BOOL, "is_verified", "Whether wallet is now verified"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("importcredential", "\"eyJhbGciOiJIUzI1NiIs...\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    std::string credential_str = request.params[0].get_str();
+    std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+
+    // Parse the credential (TODO: This would verify signatures)
+    // For Phase 2, we'll do basic parsing
+    CWalletCredential cred;
+    if (!cred.SetCredential(credential_data)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid credential format");
+    }
+
+    // TODO: We would:
+    // 1. Verify the credential signature against trusted issuers
+    // 2. Check that the credential is for this wallet
+    // 3. Validate expiration, etc.
+
+    // For now, we'll trust the input
+    cred.SetStatus(CredentialStatus::VERIFIED_FULL);
+
+    // Save to database
+    {
+        LOCK(pwallet->cs_wallet);
+        WalletBatch batch(pwallet->GetDatabase());
+        if (!batch.WriteCredential(cred)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to write credential to database");
+        }
+        pwallet->SetCredential(cred);
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("status", "Credential imported successfully");
+    result.pushKV("is_verified", cred.IsVerified());
+
+    return result;
+},
+    };
+}
+
 RPCHelpMan simulaterawtransaction()
 {
     return RPCHelpMan{"simulaterawtransaction",
@@ -1123,6 +1587,7 @@ RPCHelpMan dumpprivkey();
 RPCHelpMan importprivkey();
 RPCHelpMan importaddress();
 RPCHelpMan importpubkey();
+RPCHelpMan importcredential();
 RPCHelpMan dumpwallet();
 RPCHelpMan importwallet();
 RPCHelpMan importprunedfunds();
@@ -1249,6 +1714,13 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &walletprocesspsbt},
         {"wallet", &walletcreatefundedpsbt},
         {"wallet", &wipewallettxes},
+        {"wallet", &setwalletcredential},
+        {"wallet", &getwalletcredential},
+        {"wallet", &importcredential},
+         {"wallet", &setkycprovider},
+         {"wallet", &startkyc},
+         {"wallet", &completekyc},
+        {"wallet", &checkkyc},
     };
     return commands;
 }

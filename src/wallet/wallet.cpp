@@ -40,6 +40,7 @@
 #include <wallet/coincontrol.h>
 #include <wallet/context.h>
 #include <wallet/external_signer_scriptpubkeyman.h>
+#include <wallet/credential.h> 
 #include <warnings.h>
 
 #include <coinjoin/options.h>
@@ -568,6 +569,62 @@ void CWallet::SetMinVersion(enum WalletFeature nVersion, WalletBatch* batch_in)
     }
 }
 
+void CWallet::ScheduleCredentialRenewal()
+{
+    if (!IsVerified()) return;
+    
+    CCredentialMetadata metadata = m_credential.GetMetadata();
+    if (metadata.nExpiresAt == 0) return;
+    
+    // Schedule renewal 7 days before expiry
+    int64_t now = GetTime();
+    int64_t renewal_time = metadata.nExpiresAt - 7 * 24 * 60 * 60;
+    
+    if (renewal_time <= now) {
+        // Already expired or close to expiry, renew now
+        RenewCredential();
+    } else {
+        // Schedule renewal
+        LogPrintf("Scheduling credential renewal for %lld\n", renewal_time);
+        // TODO: Use validation interface to schedule callback
+        //       This would need proper implementation with the chain interface
+    }
+}
+
+bool CWallet::RenewCredential()
+{
+    if (!m_kyc_provider) {
+        LogPrintf("Cannot renew credential: no KYC provider configured\n");
+        return false;
+    }
+    
+    LogPrintf("Attempting to renew credential\n");
+    
+    // Start new KYC session with same level
+    KYCLevel current_level = KYCLevel::BASIC;
+    switch (m_credential.GetStatus()) {
+        case CredentialStatus::VERIFIED_BASIC:
+            current_level = KYCLevel::BASIC;
+            break;
+        case CredentialStatus::VERIFIED_FULL:
+            current_level = KYCLevel::FULL;
+            break;
+        default:
+            return false;
+    }
+    
+    auto session_res = StartKYCVerification(current_level, "");
+    if (!session_res) {
+        LogPrintf("Failed to start renewal session: %s\n", util::ErrorString(session_res).original);
+        return false;
+    }
+    
+    // TODO: This would wait for callback or poll
+    // For now, we'll just log
+    LogPrintf("Renewal session started: %s\n", session_res->session_id);
+    
+    return true;
+}
 std::set<uint256> CWallet::GetConflicts(const uint256& txid) const
 {
     std::set<uint256> result;
@@ -2303,6 +2360,14 @@ DBErrors CWallet::LoadWallet()
         }
     }
 
+    if (m_credential.IsValid()) {
+        WalletLogPrintf("Wallet is verified (status: %s)\n", 
+            CredentialStatusToString(m_credential.GetStatus()));
+    } else {
+        WalletLogPrintf("Wallet is NOT verified (status: %s)\n", 
+            CredentialStatusToString(m_credential.GetStatus()));
+    }
+
     if (m_spk_managers.empty()) {
         assert(m_external_spk_managers == nullptr);
         assert(m_internal_spk_managers == nullptr);
@@ -2469,6 +2534,16 @@ unsigned int CWallet::GetKeyPoolSize() const
 bool CWallet::TopUpKeyPool(unsigned int kpSize)
 {
     LOCK(cs_wallet);
+
+    // Check if wallet is verified before topping up keypool
+    if (!IsVerified()) {
+        std::string reason = m_credential.GetVerificationFailureReason();
+        if (!reason.empty()) {
+            WalletLogPrintf("Cannot top up keypool: %s\n", reason);
+            return false;
+        }
+    }
+
     bool res = true;
     for (auto spk_man : GetActiveScriptPubKeyMans()) {
         res &= spk_man->TopUp(kpSize);
@@ -2479,6 +2554,15 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
 util::Result<CTxDestination> CWallet::GetNewDestination(const std::string label)
 {
     LOCK(cs_wallet);
+
+    // Check if wallet is verified
+    if (!IsVerified()) {
+        std::string reason = m_credential.GetVerificationFailureReason();
+        if (!reason.empty()) {
+            return util::Error{strprintf(_("Cannot generate new address: %s"), reason)};
+        }
+    }
+
     auto spk_man = GetScriptPubKeyMan(false /* internal */);
     if (!spk_man) {
         return util::Error{_("Error: No addresses available.")};
@@ -2495,6 +2579,14 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const std::string label)
 util::Result<CTxDestination> CWallet::GetNewChangeDestination()
 {
     LOCK(cs_wallet);
+
+    // Check if wallet is verified
+    if (!IsVerified()) {
+        std::string reason = m_credential.GetVerificationFailureReason();
+        if (!reason.empty()) {
+            return util::Error{strprintf(_("Cannot generate change address: %s"), reason)};
+        }
+    }
 
     ReserveDestination reservedest(this);
     auto op_dest = reservedest.GetReservedDestination(true);
@@ -2571,6 +2663,14 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::string& purpose) co
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool fInternalIn)
 {
+    // Check if wallet is verified before reserving an address
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            return util::Error{strprintf(_("Cannot generate address: %s"), reason)};
+        }
+    }
+
     m_spk_man = pwallet->GetScriptPubKeyMan(fInternalIn);
     if (!m_spk_man) {
         return util::Error{_("Error: No addresses available.")};
@@ -2970,6 +3070,15 @@ std::shared_ptr<CWallet> CWallet::Create(WalletContext& context, const std::stri
                      !walletInstance->IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET);
     if (fFirstRun)
     {
+
+        CWalletCredential initialCred;
+        initialCred.SetStatus(CredentialStatus::NONE);
+        walletInstance->SetCredential(initialCred);
+        
+        // Save to database
+        WalletBatch batch(walletInstance->GetDatabase());
+        batch.WriteCredential(initialCred);
+
         walletInstance->SetMinVersion(FEATURE_LATEST);
 
         walletInstance->InitWalletFlags(wallet_creation_flags);
@@ -4123,4 +4232,18 @@ ScriptPubKeyMan* CWallet::AddWalletDescriptor(WalletDescriptor& desc, const Flat
 
     return spk_man;
 }
+
+std::string CWallet::GetVerificationFailureReason() const
+{
+    LOCK(cs_wallet);
+    return m_credential.GetVerificationFailureReason();
+}
+
+bool CWallet::CanGenerateAddresses() const
+{
+    LOCK(cs_wallet);
+    return m_credential.CanPerformSensitiveOperations();
+}
+
 } // namespace wallet
+

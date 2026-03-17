@@ -67,6 +67,10 @@ const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
+const std::string CREDENTIAL{"credential"};           // Store verifiable credentials
+const std::string CREDENTIAL_META{"credmeta"};        // Metadata about credentials
+const std::string CREDENTIAL_STATUS{"credstatus"};    // Verification status
+const std::string CREDENTIAL_ISSUER{"credissuer"};    // Trusted issuer info
 } // namespace DBKeys
 
 //
@@ -341,6 +345,9 @@ public:
     bool tx_corrupt{false};
 
     CWalletScanState() = default;
+
+    CWalletCredential walletCredential;
+    bool haveCredential{false};
 };
 
 static bool
@@ -362,6 +369,51 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             std::string label;
             ssValue >> label;
             pwallet->m_address_book[DecodeDestination(strAddress)].SetLabel(label);
+        } 
+        else if (strType == DBKeys::CREDENTIAL) {
+            CWalletCredential credential;
+            ssValue >> credential;
+            wss.walletCredential = credential;
+            wss.haveCredential = true;
+            
+            // Log credential status
+            std::string statusStr;
+            switch (credential.GetStatus()) {
+                case CredentialStatus::VERIFIED_BASIC:
+                    statusStr = "basic KYC verified";
+                    break;
+                case CredentialStatus::VERIFIED_FULL:
+                    statusStr = "full KYC verified";
+                    break;
+                case CredentialStatus::PENDING:
+                    statusStr = "verification pending";
+                    break;
+                case CredentialStatus::EXPIRED:
+                    statusStr = "expired";
+                    break;
+                case CredentialStatus::REVOKED:
+                    statusStr = "revoked";
+                    break;
+                default:
+                    statusStr = "unverified";
+            }
+             pwallet->WalletLogPrintf("Loaded wallet credential: %s\n", 
+                CredentialStatusToString(credential.GetStatus()));
+        }
+        else if (strType == DBKeys::CREDENTIAL_META) {
+            CCredentialMetadata meta;
+            ssValue >> meta;
+            // Update the credential metadata if we have a credential
+            if (wss.haveCredential) {
+                wss.walletCredential.SetMetadata(meta);
+            }
+        }
+        else if (strType == DBKeys::CREDENTIAL_STATUS) {
+            uint8_t statusByte;
+            ssValue >> statusByte;
+            if (wss.haveCredential) {
+                wss.walletCredential.SetStatus(static_cast<CredentialStatus>(statusByte));
+            }
         } else if (strType == DBKeys::PURPOSE) {
             std::string strAddress;
             ssKey >> strAddress;
@@ -883,6 +935,26 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
     }
     m_batch->CloseCursor();
 
+    if (wss.haveCredential) {
+        CWalletCredential& cred = wss.walletCredential;
+        
+        // Check if credential is expired
+        if (!cred.IsValid()) {
+            pwallet->WalletLogPrintf("Warning: Wallet credential is expired or invalid\n");
+            // Optionally update status to EXPIRED
+            if (cred.GetStatus() == CredentialStatus::VERIFIED_BASIC || 
+                cred.GetStatus() == CredentialStatus::VERIFIED_FULL) {
+                cred.SetStatus(CredentialStatus::EXPIRED);
+                // Write the updated status back to database
+                WriteCredentialStatus(CredentialStatus::EXPIRED);
+            }
+        }
+        
+        // Store credential in wallet (you'll need to add a member to CWallet)
+        // We'll cover this in the next phase
+        pwallet->SetCredential(cred);
+    }
+
     // Validate HD chain encryption consistency now that all data is loaded
     if (auto spk_man = pwallet->GetLegacyScriptPubKeyMan()) {
         CHDChain hdChain;
@@ -1288,4 +1360,41 @@ std::unique_ptr<WalletDatabase> CreateMockWalletDatabase()
     DatabaseOptions options;
     return CreateMockWalletDatabase(options);
 }
+
+bool WalletBatch::WriteCredential(const CWalletCredential& credential)
+{
+    return WriteIC(DBKeys::CREDENTIAL, credential);
+}
+
+bool WalletBatch::EraseCredential()
+{
+    return EraseIC(DBKeys::CREDENTIAL);
+}
+
+bool WalletBatch::ReadCredential(CWalletCredential& credential)
+{
+    return m_batch->Read(DBKeys::CREDENTIAL, credential);
+}
+
+bool WalletBatch::WriteCredentialMetadata(const CCredentialMetadata& metadata)
+{
+    return WriteIC(DBKeys::CREDENTIAL_META, metadata);
+}
+
+bool WalletBatch::WriteCredentialStatus(CredentialStatus status)
+{
+    uint8_t statusByte = static_cast<uint8_t>(status);
+    return WriteIC(DBKeys::CREDENTIAL_STATUS, statusByte);
+}
+
+bool WalletBatch::WriteTrustedIssuer(const CTrustedIssuer& issuer)
+{
+    return WriteIC(std::make_pair(DBKeys::CREDENTIAL_ISSUER, issuer.issuerId), issuer);
+}
+
+bool WalletBatch::ReadTrustedIssuer(CTrustedIssuer& issuer)
+{
+    return m_batch->Read(std::make_pair(DBKeys::CREDENTIAL_ISSUER, issuer.issuerId), issuer);
+}
+
 } // namespace wallet

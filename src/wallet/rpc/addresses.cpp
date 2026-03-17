@@ -35,6 +35,12 @@ RPCHelpMan getnewaddress()
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
 
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot generate new address: %s", reason));
+        }
+    }
     LOCK(pwallet->cs_wallet);
 
     if (!pwallet->CanGetAddresses()) {
@@ -72,6 +78,13 @@ RPCHelpMan getrawchangeaddress()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot generate change address: %s", reason));
+        }
+    }
 
     LOCK(pwallet->cs_wallet);
 

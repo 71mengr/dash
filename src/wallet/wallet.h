@@ -32,6 +32,7 @@
 #include <wallet/transaction.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
+#include <wallet/credential.h>
 
 #include <algorithm>
 #include <atomic>
@@ -56,6 +57,7 @@ enum class FeeEstimateMode;
 struct bilingual_str;
 
 using LoadWalletFn = std::function<void(std::unique_ptr<interfaces::Wallet> wallet)>;
+
 
 namespace wallet {
 struct WalletContext;
@@ -120,6 +122,8 @@ static constexpr size_t DUMMY_NESTED_P2PKH_INPUT_SIZE = 113;
 //! if set, all keys will be derived by using BIP39/BIP44
 static const bool DEFAULT_USE_HD_WALLET = true;
 
+static constexpr uint64_t WALLET_FLAG_REQUIRE_VERIFICATION = (1ULL << 31);
+
 class CCoinControl;
 class CWalletTx;
 class ReserveDestination;
@@ -142,7 +146,8 @@ static constexpr uint64_t KNOWN_WALLET_FLAGS =
     |   WALLET_FLAG_LAST_HARDENED_XPUB_CACHED
     |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
     |   WALLET_FLAG_DESCRIPTORS
-    |   WALLET_FLAG_EXTERNAL_SIGNER;
+    |   WALLET_FLAG_EXTERNAL_SIGNER
+    |   WALLET_FLAG_REQUIRE_VERIFICATION;
 
 static constexpr uint64_t MUTABLE_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE;
@@ -265,6 +270,16 @@ class WalletRescanReserver; //forward declarations for ScanForWalletTransactions
 class CWallet final : public WalletStorage, public interfaces::Chain::Notifications
 {
 private:
+    CWalletCredential m_credential;
+
+    // KYC provider
+    KYCProviderType m_kyc_provider_type{KYCProviderType::NONE};
+    std::unique_ptr<KYCProvider> m_kyc_provider;
+    std::map<std::string, KYCSession> m_kyc_sessions;
+    
+    // Auto-renewal timer
+    std::unique_ptr<interfaces::Handler> m_renewal_handler;
+
     CKeyingMaterial vMasterKey GUARDED_BY(cs_wallet);
 
     //! if fOnlyMixingAllowed is true, only mixing should be allowed in unlocked wallet
@@ -434,6 +449,14 @@ public:
         assert(static_cast<bool>(m_database));
         return *m_database;
     }
+
+    // KYC provider
+    KYCProviderType m_kyc_provider_type{KYCProviderType::NONE};
+    std::unique_ptr<KYCProvider> m_kyc_provider;
+    std::map<std::string, KYCSession> m_kyc_sessions;
+    
+    // Auto-renewal timer
+    std::unique_ptr<interfaces::Handler> m_renewal_handler;
 
     /** Get a name for this wallet for logging/debugging purposes.
      */
@@ -1079,6 +1102,18 @@ public:
 
     //! Add a descriptor to the wallet, return a ScriptPubKeyMan & associated output type
     ScriptPubKeyMan* AddWalletDescriptor(WalletDescriptor& desc, const FlatSigningProvider& signing_provider, const std::string& label, bool internal) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
+    void SetCredential(const CWalletCredential& cred) { m_credential = cred; }
+    CWalletCredential GetCredential() const { return m_credential; }
+    bool IsVerified() const { return m_credential.IsVerified(); }
+    CredentialStatus GetVerificationStatus() const { return m_credential.GetStatus(); }
+    
+    // Check if wallet can generate new addresses (requires verification)
+    bool CanGenerateAddresses() const {
+        // For Phase 1, we just check verification status
+        // Phase 2 will implement actual restrictions
+        return IsVerified();
+    }
 };
 
 /**

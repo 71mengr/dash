@@ -445,6 +445,8 @@ BITCOIN_CORE_H = \
   wallet/coinjoin.h \
   wallet/coinselection.h \
   wallet/context.h \
+  wallet/credential.cpp \
+  wallet/kyc_provider_coinfirm.cpp \
   wallet/crypter.h \
   wallet/db.h \
   wallet/dump.h \
@@ -452,6 +454,8 @@ BITCOIN_CORE_H = \
   wallet/fees.h \
   wallet/hdchain.h \
   wallet/ismine.h \
+  wallet/credential.h \
+  wallet/kyc_provider.h \
   wallet/load.h \
   wallet/receive.h \
   wallet/rpc/util.h \

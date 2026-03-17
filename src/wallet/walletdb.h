@@ -250,6 +250,21 @@ public:
     bool TxnCommit();
     //! Abort current transaction
     bool TxnAbort();
+
+    bool WriteCredential(const CWalletCredential& credential);
+
+    bool EraseCredential();
+
+    bool ReadCredential(CWalletCredential& credential);
+
+    bool WriteCredentialMetadata(const CCredentialMetadata& metadata);
+
+    bool WriteCredentialStatus(CredentialStatus status);
+
+    bool WriteTrustedIssuer(const CTrustedIssuer& issuer);
+
+    bool ReadTrustedIssuer(CTrustedIssuer& issuer);
+
 private:
     std::unique_ptr<DatabaseBatch> m_batch;
     WalletDatabase& m_database;

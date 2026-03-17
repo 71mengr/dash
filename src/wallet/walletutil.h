@@ -9,6 +9,8 @@
 #include <script/descriptor.h>
 
 #include <vector>
+#include <map>
+#include <string>
 
 namespace wallet {
 /** (client) version numbers for particular wallet features */
@@ -21,7 +23,12 @@ enum WalletFeature
     FEATURE_HD = 120200,    // Hierarchical key derivation after BIP32 (HD Wallet), BIP44 (multi-coin), BIP39 (mnemonic)
                             // which uses on-the-fly private key derivation
 
-    FEATURE_LATEST = FEATURE_HD
+    // NEW: KYC/credential features
+    FEATURE_KYC_BASIC = 130000,   // Basic KYC support (credential storage)
+    FEATURE_KYC_FULL = 130100,    // Full KYC with provider integration
+    FEATURE_KYC_ZKPROOF = 130200, // Zero-knowledge proof support
+
+    FEATURE_LATEST = FEATURE_KYC_ZKPROOF
 };
 
 bool IsFeatureSupported(int wallet_version, int feature_version);
@@ -35,7 +42,7 @@ enum WalletFlags : uint64_t {
     // them with privacy considerations in mind
     WALLET_FLAG_AVOID_REUSE = (1ULL << 0),
 
-    // Indicates that the metadata has already been upgraded to contain key origins
+    // Indicates that the metadata has been upgraded to contain key origins
     WALLET_FLAG_KEY_ORIGIN_METADATA = (1ULL << 1),
 
     // Indicates that the descriptor cache has been upgraded to cache last hardened xpubs
@@ -61,7 +68,84 @@ enum WalletFlags : uint64_t {
 
     //! Indicates that the wallet needs an external signer
     WALLET_FLAG_EXTERNAL_SIGNER = (1ULL << 35),
+
+    // NEW: KYC-related flags
+    //! Wallet requires KYC verification for operations
+    WALLET_FLAG_REQUIRE_VERIFICATION = (1ULL << 36),
+
+    //! Wallet has KYC auto-renewal enabled
+    WALLET_FLAG_KYC_AUTO_RENEW = (1ULL << 37),
+
+    //! Wallet supports selective disclosure (ZK-proofs)
+    WALLET_FLAG_KYC_ZKPROOF = (1ULL << 38),
 };
+
+// KYC provider types (moved from kyc_provider.h to keep flags in one place)
+enum class KYCProviderType : uint8_t {
+    NONE = 0,
+    COINFIRM = 1,      // Dash's existing partner
+    ONFIDO = 2,        // Popular KYC provider
+    JUMIO = 3,         // Another major provider
+    CUSTOM_VC = 4,     // Verifiable Credentials (DID)
+    INTERNAL = 5       // Internal test provider
+};
+
+// Convert KYCProviderType to string
+inline std::string KYCProviderTypeToString(KYCProviderType type)
+{
+    switch (type) {
+        case KYCProviderType::NONE: return "none";
+        case KYCProviderType::COINFIRM: return "coinfirm";
+        case KYCProviderType::ONFIDO: return "onfido";
+        case KYCProviderType::JUMIO: return "jumio";
+        case KYCProviderType::CUSTOM_VC: return "verifiable-credentials";
+        case KYCProviderType::INTERNAL: return "internal";
+        default: return "unknown";
+    }
+}
+
+// Convert string to KYCProviderType
+inline KYCProviderType StringToKYCProviderType(const std::string& str)
+{
+    if (str == "coinfirm") return KYCProviderType::COINFIRM;
+    if (str == "onfido") return KYCProviderType::ONFIDO;
+    if (str == "jumio") return KYCProviderType::JUMIO;
+    if (str == "verifiable-credentials" || str == "vc") return KYCProviderType::CUSTOM_VC;
+    if (str == "internal") return KYCProviderType::INTERNAL;
+    return KYCProviderType::NONE;
+}
+
+// KYC feature levels.
+enum class KYCFeatureLevel : uint8_t {
+    NONE = 0,
+    BASIC = 1,      // Basic credential storage
+    FULL = 2,       // Provider integration
+    ZKPROOF = 3     // Zero-knowledge proofs
+};
+
+bool IsKYCFeatureSupported(int wallet_version, KYCFeatureLevel level);
+WalletFeature GetMinimumKYCVersion(KYCFeatureLevel level);
+KYCProviderType ParseKYCProvider(const std::string& provider_str, std::string& error);
+std::vector<KYCProviderType> GetAvailableKYCProviders();
+std::map<std::string, std::string> GetDefaultKYCConfig(KYCProviderType type);
+
+// Update known flags to include new KYC flags
+static constexpr uint64_t KNOWN_WALLET_FLAGS =
+        WALLET_FLAG_AVOID_REUSE
+    |   WALLET_FLAG_BLANK_WALLET
+    |   WALLET_FLAG_KEY_ORIGIN_METADATA
+    |   WALLET_FLAG_LAST_HARDENED_XPUB_CACHED
+    |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
+    |   WALLET_FLAG_DESCRIPTORS
+    |   WALLET_FLAG_EXTERNAL_SIGNER
+    |   WALLET_FLAG_REQUIRE_VERIFICATION      // NEW
+    |   WALLET_FLAG_KYC_AUTO_RENEW            // NEW
+    |   WALLET_FLAG_KYC_ZKPROOF;              // NEW
+
+// Mutable flags (can be changed after wallet creation)
+static constexpr uint64_t MUTABLE_WALLET_FLAGS =
+        WALLET_FLAG_AVOID_REUSE
+    |   WALLET_FLAG_KYC_AUTO_RENEW;            // NEW - can toggle auto-renewal
 
 //! Get the path of the wallet directory.
 fs::path GetWalletDir();
@@ -74,7 +158,7 @@ public:
     uint256 id; // Descriptor ID (calculated once at descriptor initialization/deserialization)
     uint64_t creation_time = 0;
     int32_t range_start = 0; // First item in range; start of range, inclusive, i.e. [range_start, range_end). This never changes.
-    int32_t range_end = 0; // Item after the last; end of range, exclusive, i.e. [range_start, range_end). This will increment with each TopUp()
+    int32_t range_end = 0; // Item after the last; end of range, exclusive, i.e. [range_start, range_end]. This will increment with each TopUp()
     int32_t next_index = 0; // Position of the next item to generate
     DescriptorCache cache;
 
@@ -100,6 +184,26 @@ public:
     WalletDescriptor() {}
     WalletDescriptor(std::shared_ptr<Descriptor> descriptor, uint64_t creation_time, int32_t range_start, int32_t range_end, int32_t next_index) : descriptor(descriptor), id(DescriptorID(*descriptor)), creation_time(creation_time), range_start(range_start), range_end(range_end), next_index(next_index) { }
 };
+
+// NEW: KYC configuration structure
+struct KYCConfig
+{
+    KYCProviderType provider_type{KYCProviderType::NONE};
+    std::map<std::string, std::string> provider_config;
+    int64_t last_renewal_check{0};
+    bool auto_renew{false};
+    
+    SERIALIZE_METHODS(KYCConfig, obj)
+    {
+        uint8_t provider_byte = static_cast<uint8_t>(obj.provider_type);
+        READWRITE(provider_byte);
+        READWRITE(obj.provider_config);
+        READWRITE(obj.last_renewal_check);
+        READWRITE(obj.auto_renew);
+        obj.provider_type = static_cast<KYCProviderType>(provider_byte);
+    }
+};
+
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_WALLETUTIL_H

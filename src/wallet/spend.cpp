@@ -108,6 +108,8 @@ CoinsResult AvailableCoins(const CWallet& wallet,
 {
     AssertLockHeld(wallet.cs_wallet);
 
+    bool wallet_verified = wallet.IsVerified();
+
     CoinType nCoinType = coinControl ? coinControl->nCoinType : CoinType::ALL_COINS;
 
     CoinsResult result;
@@ -211,6 +213,10 @@ CoinsResult AvailableCoins(const CWallet& wallet,
             // it is safe to assume that this input is solvable if input_bytes is greater -1.
             bool solvable = input_bytes > -1;
             bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+
+           if (!wallet_verified) {
+                spendable = false;
+            }
 
             // Filter by spendable outputs only
             if (!spendable && only_spendable) continue;
@@ -774,6 +780,13 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
 {
     AssertLockHeld(wallet.cs_wallet);
 
+    if (!wallet.IsVerified()) {
+        std::string reason = wallet.GetVerificationFailureReason();
+        if (!reason.empty()) {
+            return util::Error{strprintf(_("Cannot create transaction: %s"), reason)};
+        }
+    }
+
     // out variables, to be packed into returned result structure
     CAmount nFeeRet;
     int nChangePosInOut = change_pos;
@@ -1147,6 +1160,15 @@ util::Result<CreatedTransactionResult> CreateTransaction(
 
 bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl coinControl)
 {
+
+    if (!wallet.IsVerified()) {
+        std::string reason = wallet.GetVerificationFailureReason();
+        if (!reason.empty()) {
+            error = strprintf(_("Cannot fund transaction: %s"), reason);
+            return false;
+        }
+    }
+
     std::vector<CRecipient> vecSend;
 
     // If no specific change position was requested, apply BIP69
@@ -1225,6 +1247,12 @@ bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet,
 
 bool GenBudgetSystemCollateralTx(CWallet& wallet, CTransactionRef& tx, uint256 hash, CAmount amount, const COutPoint& outpoint)
 {
+
+    if (!wallet.IsVerified()) {
+        wallet.WalletLogPrintf("%s -- Wallet not verified: %s\n", __func__, wallet.GetVerificationFailureReason());
+        return false;
+    }
+
     const CScript scriptChange{CScript() << OP_RETURN << ToByteVector(hash)};
     const std::vector<CRecipient> vecSend{{scriptChange, amount, false}};
 
