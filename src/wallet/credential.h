@@ -12,7 +12,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <util/zero_knowledge.h>
 
 namespace wallet {
 
