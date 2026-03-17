@@ -10,6 +10,7 @@
 #include <util/time.h>
 
 #include <string>
+#include <map>
 #include <vector>
 #include <util/zero_knowledge.h>
 
@@ -26,17 +27,7 @@ enum class CredentialStatus : uint8_t {
 };
 
 // Convert CredentialStatus to string for logging
-inline std::string CredentialStatusToString(CredentialStatus status) {
-    switch (status) {
-        case CredentialStatus::NONE: return "unverified";
-        case CredentialStatus::PENDING: return "verification pending";
-        case CredentialStatus::VERIFIED_BASIC: return "basic KYC verified";
-        case CredentialStatus::VERIFIED_FULL: return "full KYC verified";
-        case CredentialStatus::EXPIRED: return "expired";
-        case CredentialStatus::REVOKED: return "revoked";
-        default: return "unknown";
-    }
-}
+std::string CredentialStatusToString(CredentialStatus status);
 
 // Credential metadata
 class CCredentialMetadata
@@ -75,11 +66,7 @@ public:
     std::vector<std::string> GetAvailableAttributes() const;
 
     // Store a verifiable credential (JWT/CWT format)
-    bool SetCredential(const std::vector<unsigned char>& credential)
-    {
-        vchCredential = credential;
-        return ParseMetadata();
-    }
+    bool SetCredential(const std::vector<unsigned char>& credential);
 
     // Get the raw credential
     std::vector<unsigned char> GetCredential() const { return vchCredential; }
@@ -91,28 +78,10 @@ public:
     void SetStatus(CredentialStatus newStatus) { status = newStatus; }
 
     // Check if credential is valid (not expired, not revoked)
-    bool IsValid() const
-    {
-        if (status == CredentialStatus::EXPIRED || status == CredentialStatus::REVOKED) {
-            return false;
-        }
-
-        // Check expiration if we have metadata
-        if (metadata.nExpiresAt > 0) {
-            int64_t now = GetTime();
-            if (now > metadata.nExpiresAt) {
-                return false;
-            }
-        }
-
-        return status == CredentialStatus::VERIFIED_BASIC ||
-               status == CredentialStatus::VERIFIED_FULL;
-    }
+    bool IsValid() const;
 
     // Check if wallet is verified (has valid credential)
-    bool IsVerified() const {
-        return IsValid();
-    }
+    bool IsVerified() const;
 
     // Get metadata
     CCredentialMetadata GetMetadata() const { return metadata; }
@@ -129,31 +98,13 @@ public:
         obj.status = static_cast<CredentialStatus>(statusByte);
     }
 
-    bool CanPerformSensitiveOperations() const {
-        return IsVerified() && status != CredentialStatus::EXPIRED && status != CredentialStatus::REVOKED;
-    }
+    bool CanPerformSensitiveOperations() const;
 
-    std::string GetVerificationFailureReason() const {
-        switch (status) {
-            case CredentialStatus::NONE:
-                return "Wallet is not KYC verified";
-            case CredentialStatus::PENDING:
-                return "KYC verification is still pending";
-            case CredentialStatus::EXPIRED:
-                return "KYC credential has expired";
-            case CredentialStatus::REVOKED:
-                return "KYC credential has been revoked";
-            case CredentialStatus::VERIFIED_BASIC:
-            case CredentialStatus::VERIFIED_FULL:
-                return ""; // No failure
-            default:
-                return "Unknown verification status";
-        }
-    }
+    std::string GetVerificationFailureReason() const;
 
     bool ParseJWT(const std::string& jwt);
     bool ParseVC(const std::string& vc_json);
-    
+    std::string ToJSON() const;
     // Attribute storage for selective disclosure
     std::map<std::string, std::string> m_attributes;
 
@@ -163,25 +114,7 @@ private:
     CCredentialMetadata metadata;
 
     // Parse credential to extract metadata
-    bool ParseMetadata()
-    {
-        // For Phase 1, we'll implement a basic parser
-        // In later phases, this will parse actual JWT/CWT credentials
-        if (vchCredential.empty()) {
-            return false;
-        }
-
-        // For now, just set a placeholder expiration (30 days from now)
-        // This will be replaced with actual JWT parsing in Phase 2
-        metadata.nExpiresAt = GetTime() + 30 * 24 * 60 * 60;
-        metadata.issuer = "pending";
-        metadata.credentialType = "basic_kyc";
-
-        // Simple hash of credential for verification
-        metadata.credentialHash = Hash(vchCredential);
-
-        return true;
-    }
+    bool ParseMetadata();
 };
 
 // Trusted issuer information

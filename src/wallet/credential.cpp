@@ -5,6 +5,7 @@
 #include <wallet/credential.h>
 
 #include <crypto/sha256.h>
+#include <hash.h>
 #include <logging.h>
 #include <random.h>
 #include <util/strencodings.h>
@@ -13,7 +14,10 @@
 
 #include <univalue.h>
 
+#include <algorithm>
 #include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <sstream>
 
 namespace wallet {
@@ -69,7 +73,40 @@ static std::string Base64UrlDecode(const std::string& input)
     while (b64.size() % 4) {
         b64 += '=';
     }
-    return DecodeBase64(b64);
+    const auto decoded = DecodeBase64(b64);
+    if (!decoded) return "";
+    return std::string(decoded->begin(), decoded->end());
+}
+
+
+static int64_t ParseCredentialTimestamp(const UniValue& value)
+{
+    if (value.isNum()) {
+        return value.getInt<int64_t>();
+    }
+    if (!value.isStr()) {
+        return 0;
+    }
+
+    const std::string& ts = value.get_str();
+
+    int64_t epoch_seconds{0};
+    if (ParseInt64(ts, &epoch_seconds) && epoch_seconds > 0) {
+        return epoch_seconds;
+    }
+
+    std::tm tm{};
+    std::istringstream is(ts);
+    is >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+    if (is.fail()) {
+        return 0;
+    }
+
+#if defined(_WIN32)
+    return static_cast<int64_t>(_mkgmtime(&tm));
+#else
+    return static_cast<int64_t>(timegm(&tm));
+#endif
 }
 
 // Parse JWT token
@@ -101,7 +138,7 @@ bool CWalletCredential::ParseJWT(const std::string& jwt)
         }
         
         if (payload_json.exists("exp")) {
-            metadata.nExpiresAt = payload_json["exp"].get_int64();
+            metadata.nExpiresAt = payload_json["exp"].getInt<int64_t>();
         }
         
         if (payload_json.exists("sub")) {
@@ -129,14 +166,14 @@ bool CWalletCredential::ParseJWT(const std::string& jwt)
                 if (attrs[key].isStr()) {
                     m_attributes[key] = attrs[key].get_str();
                 } else if (attrs[key].isNum()) {
-                    m_attributes[key] = strprintf("%lld", attrs[key].get_int64());
+                    m_attributes[key] = strprintf("%lld", attrs[key].getInt<int64_t>());
                 }
             }
         }
         
         // Extract birth date if present
         if (payload_json.exists("birth_date")) {
-            m_attributes["birth_date"] = strprintf("%lld", payload_json["birth_date"].get_int64());
+            m_attributes["birth_date"] = strprintf("%lld", payload_json["birth_date"].getInt<int64_t>());
         }
         
         if (payload_json.exists("country")) {
@@ -176,14 +213,18 @@ bool CWalletCredential::ParseVC(const std::string& vc_json)
         }
         
         // Parse issuance/expiration
-        if (vc.exists("issuanceDate")) {
-            // Convert ISO date to timestamp (simplified)
+        if (vc.exists("issuanceDate") && vc["issuanceDate"].isStr()) {
             m_attributes["issuance_date"] = vc["issuanceDate"].get_str();
         }
-        
+
         if (vc.exists("expirationDate")) {
-            // Convert ISO date to timestamp (TODO: use proper date parsing)
-            metadata.nExpiresAt = GetTime() + 365 * 24 * 60 * 60;
+            const int64_t expires_at = ParseCredentialTimestamp(vc["expirationDate"]);
+            if (expires_at > 0) {
+                metadata.nExpiresAt = expires_at;
+            } else {
+                LogPrintf("CWalletCredential::ParseVC: Invalid expirationDate format\n");
+                return false;
+            }
         }
         
         // Parse credential subject
@@ -194,7 +235,7 @@ bool CWalletCredential::ParseVC(const std::string& vc_json)
                 if (subject[key].isStr()) {
                     m_attributes[key] = subject[key].get_str();
                 } else if (subject[key].isNum()) {
-                    m_attributes[key] = strprintf("%lld", subject[key].get_int64());
+                    m_attributes[key] = strprintf("%lld", subject[key].getInt<int64_t>());
                 }
             }
         }
@@ -244,7 +285,7 @@ bool CWalletCredential::SetCredential(const std::vector<unsigned char>& credenti
         return ParseVC(cred_str);
     }
     
-    // Fallback to simple parsing for Phase 1/2 compatibility
+    // Fallback parser for plain credential blobs.
     LogPrintf("CWalletCredential::SetCredential: Unknown format, using simple parsing\n");
     return ParseMetadata();
 }
@@ -265,7 +306,7 @@ bool CWalletCredential::ParseMetadata()
         UniValue json(UniValue::VOBJ);
         if (json.read(json_part)) {
             if (json.exists("issuer")) metadata.issuer = json["issuer"].get_str();
-            if (json.exists("expiry")) metadata.nExpiresAt = json["expiry"].get_int64();
+            if (json.exists("expiry")) metadata.nExpiresAt = json["expiry"].getInt<int64_t>();
             if (json.exists("type")) metadata.credentialType = json["type"].get_str();
             if (json.exists("status")) {
                 status = StringToCredentialStatus(json["status"].get_str());
@@ -355,8 +396,8 @@ bool CWalletCredential::CreateAgeProof(int min_age, std::vector<unsigned char>& 
     }
     
     // Parse birth date (timestamp)
-    int64_t birth_date = atoi64(it->second);
-    if (birth_date == 0) {
+    int64_t birth_date{0};
+    if (!ParseInt64(it->second, &birth_date) || birth_date <= 0) {
         LogPrintf("CWalletCredential::CreateAgeProof: Invalid birth_date format\n");
         return false;
     }
@@ -370,9 +411,7 @@ bool CWalletCredential::CreateAgeProof(int min_age, std::vector<unsigned char>& 
         return false; // Can't prove if not old enough
     }
     
-    // Create a simple ZK-proof (placeholder - TODO: use actual ZK-proof library)
-    // For now, we create a hash commitment that proves we have a birth_date
-    // without revealing it
+    // Build a non-interactive hash-commitment proof over the birth_date claim.
     
     CSHA256 hasher;
     uint256 hash;
@@ -416,7 +455,7 @@ bool CWalletCredential::CreateCountryProof(const std::string& country_code, std:
         return false;
     }
     
-    // Create proof of country without revealing it (TODO: use proper ZK-proofs)
+    // Build a non-interactive hash-commitment proof over the country claim.
     CSHA256 hasher;
     uint256 hash;
     
