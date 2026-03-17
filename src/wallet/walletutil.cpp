@@ -57,11 +57,11 @@ WalletFeature GetClosestWalletFeature(int version)
 bool IsKYCFeatureSupported(int wallet_version, KYCFeatureLevel level)
 {
     switch (level) {
-        case KYCFeatureLevel::BASIC:
+        case KYCFeatureLevel::BASIC_LEVEL:
             return IsFeatureSupported(wallet_version, FEATURE_KYC_BASIC);
-        case KYCFeatureLevel::FULL:
+        case KYCFeatureLevel::FULL_LEVEL:
             return IsFeatureSupported(wallet_version, FEATURE_KYC_FULL);
-        case KYCFeatureLevel::ZKPROOF:
+        case KYCFeatureLevel::ZKPROOF_LEVEL:
             return IsFeatureSupported(wallet_version, FEATURE_KYC_ZKPROOF);
         default:
             return false;
@@ -72,11 +72,11 @@ bool IsKYCFeatureSupported(int wallet_version, KYCFeatureLevel level)
 WalletFeature GetMinimumKYCVersion(KYCFeatureLevel level)
 {
     switch (level) {
-        case KYCFeatureLevel::BASIC:
+        case KYCFeatureLevel::BASIC_LEVEL:
             return FEATURE_KYC_BASIC;
-        case KYCFeatureLevel::FULL:
+        case KYCFeatureLevel::FULL_LEVEL:
             return FEATURE_KYC_FULL;
-        case KYCFeatureLevel::ZKPROOF:
+        case KYCFeatureLevel::ZKPROOF_LEVEL:
             return FEATURE_KYC_ZKPROOF;
         default:
             return FEATURE_BASE;

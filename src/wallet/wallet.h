@@ -33,6 +33,7 @@
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 #include <wallet/credential.h>
+#include <wallet/kyc_provider.h>
 
 #include <algorithm>
 #include <atomic>
@@ -122,7 +123,6 @@ static constexpr size_t DUMMY_NESTED_P2PKH_INPUT_SIZE = 113;
 //! if set, all keys will be derived by using BIP39/BIP44
 static const bool DEFAULT_USE_HD_WALLET = true;
 
-static constexpr uint64_t WALLET_FLAG_REQUIRE_VERIFICATION = (1ULL << 31);
 
 class CCoinControl;
 class CWalletTx;
@@ -137,29 +137,6 @@ struct CompactTallyItem
     CAmount nAmount{0};
     std::vector<COutPoint> outpoints;
     CompactTallyItem() = default;
-};
-
-static constexpr uint64_t KNOWN_WALLET_FLAGS =
-        WALLET_FLAG_AVOID_REUSE
-    |   WALLET_FLAG_BLANK_WALLET
-    |   WALLET_FLAG_KEY_ORIGIN_METADATA
-    |   WALLET_FLAG_LAST_HARDENED_XPUB_CACHED
-    |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
-    |   WALLET_FLAG_DESCRIPTORS
-    |   WALLET_FLAG_EXTERNAL_SIGNER
-    |   WALLET_FLAG_REQUIRE_VERIFICATION;
-
-static constexpr uint64_t MUTABLE_WALLET_FLAGS =
-        WALLET_FLAG_AVOID_REUSE;
-
-static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
-    {"avoid_reuse", WALLET_FLAG_AVOID_REUSE},
-    {"blank", WALLET_FLAG_BLANK_WALLET},
-    {"key_origin_metadata", WALLET_FLAG_KEY_ORIGIN_METADATA},
-    {"last_hardened_xpub_cached", WALLET_FLAG_LAST_HARDENED_XPUB_CACHED},
-    {"disable_private_keys", WALLET_FLAG_DISABLE_PRIVATE_KEYS},
-    {"descriptor_wallet", WALLET_FLAG_DESCRIPTORS},
-    {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER}
 };
 
 extern const std::map<uint64_t,std::string> WALLET_FLAG_CAVEATS;
@@ -271,14 +248,6 @@ class CWallet final : public WalletStorage, public interfaces::Chain::Notificati
 {
 private:
     CWalletCredential m_credential;
-
-    // KYC provider
-    KYCProviderType m_kyc_provider_type{KYCProviderType::NONE};
-    std::unique_ptr<KYCProvider> m_kyc_provider;
-    std::map<std::string, KYCSession> m_kyc_sessions;
-    
-    // Auto-renewal timer
-    std::unique_ptr<interfaces::Handler> m_renewal_handler;
 
     CKeyingMaterial vMasterKey GUARDED_BY(cs_wallet);
 

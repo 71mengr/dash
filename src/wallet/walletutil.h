@@ -118,9 +118,9 @@ inline KYCProviderType StringToKYCProviderType(const std::string& str)
 // KYC feature levels.
 enum class KYCFeatureLevel : uint8_t {
     NONE = 0,
-    BASIC = 1,      // Basic credential storage
-    FULL = 2,       // Provider integration
-    ZKPROOF = 3     // Zero-knowledge proofs
+    BASIC_LEVEL = 1, // Basic credential storage
+    FULL_LEVEL = 2,  // Provider integration
+    ZKPROOF_LEVEL = 3 // Zero-knowledge proofs
 };
 
 bool IsKYCFeatureSupported(int wallet_version, KYCFeatureLevel level);
@@ -141,6 +141,20 @@ static constexpr uint64_t KNOWN_WALLET_FLAGS =
     |   WALLET_FLAG_REQUIRE_VERIFICATION      // NEW
     |   WALLET_FLAG_KYC_AUTO_RENEW            // NEW
     |   WALLET_FLAG_KYC_ZKPROOF;              // NEW
+
+
+static const std::map<std::string, WalletFlags> WALLET_FLAG_MAP{
+    {"avoid_reuse", WALLET_FLAG_AVOID_REUSE},
+    {"blank", WALLET_FLAG_BLANK_WALLET},
+    {"key_origin_metadata", WALLET_FLAG_KEY_ORIGIN_METADATA},
+    {"last_hardened_xpub_cached", WALLET_FLAG_LAST_HARDENED_XPUB_CACHED},
+    {"disable_private_keys", WALLET_FLAG_DISABLE_PRIVATE_KEYS},
+    {"descriptor_wallet", WALLET_FLAG_DESCRIPTORS},
+    {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER},
+    {"require_verification", WALLET_FLAG_REQUIRE_VERIFICATION},
+    {"kyc_auto_renew", WALLET_FLAG_KYC_AUTO_RENEW},
+    {"kyc_zkproof", WALLET_FLAG_KYC_ZKPROOF},
+};
 
 // Mutable flags (can be changed after wallet creation)
 static constexpr uint64_t MUTABLE_WALLET_FLAGS =
