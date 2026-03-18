@@ -7,6 +7,7 @@
 
 #include <util/translation.h>
 #include <wallet/credential.h>
+#include <wallet/walletutil.h>
 
 #include <functional>
 #include <map>
@@ -15,22 +16,13 @@
 
 namespace wallet {
 
-// KYC provider types
-enum class KYCProviderType {
-    COINFIRM,           // Dash's existing partner
-    ONFIDO,             // Popular KYC provider
-    JUMIO,              // Another major provider
-    CUSTOM_VC,          // Verifiable Credentials (DID)
-    NONE
-};
-
 // KYC verification levels
-enum class KYCLevel {
+enum class KYCLevel : uint8_t {
     NONE = 0,
-    BASIC = 1,          // Email/phone verification
-    ADVANCED = 2,       // ID document verification
-    FULL = 3,           // Liveness check + address proof
-    CORPORATE = 4       // Business verification
+    BASIC_LEVEL = 1,    // Email/phone verification
+    ADVANCED_LEVEL = 2, // ID document verification
+    FULL_LEVEL = 3,     // Liveness check + address proof
+    CORPORATE_LEVEL = 4 // Business verification
 };
 
 // KYC session status

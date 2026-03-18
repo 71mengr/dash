@@ -601,13 +601,13 @@ bool CWallet::RenewCredential()
     LogPrintf("Attempting to renew credential\n");
     
     // Start new KYC session with same level
-    KYCLevel current_level = KYCLevel::BASIC;
+    KYCLevel current_level = KYCLevel::BASIC_LEVEL;
     switch (m_credential.GetStatus()) {
         case CredentialStatus::VERIFIED_BASIC:
-            current_level = KYCLevel::BASIC;
+            current_level = KYCLevel::BASIC_LEVEL;
             break;
         case CredentialStatus::VERIFIED_FULL:
-            current_level = KYCLevel::FULL;
+            current_level = KYCLevel::FULL_LEVEL;
             break;
         default:
             return false;

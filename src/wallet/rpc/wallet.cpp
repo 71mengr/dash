@@ -170,11 +170,11 @@ static RPCHelpMan startkyc()
     KYCLevel level;
     
     if (level_str == "basic") {
-        level = KYCLevel::BASIC;
+        level = KYCLevel::BASIC_LEVEL;
     } else if (level_str == "advanced") {
-        level = KYCLevel::ADVANCED;
+        level = KYCLevel::ADVANCED_LEVEL;
     } else if (level_str == "full") {
-        level = KYCLevel::FULL;
+        level = KYCLevel::FULL_LEVEL;
     } else {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid level. Use 'basic', 'advanced', or 'full'");
     }

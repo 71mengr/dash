@@ -133,7 +133,7 @@ bool CoinfirmProvider::IsIssuerTrusted(const std::string& issuer_did)
 
 std::vector<KYCLevel> CoinfirmProvider::GetSupportedLevels() const
 {
-    return {KYCLevel::BASIC, KYCLevel::ADVANCED, KYCLevel::FULL};
+    return {KYCLevel::BASIC_LEVEL, KYCLevel::ADVANCED_LEVEL, KYCLevel::FULL_LEVEL};
 }
 
 // Factory implementation
