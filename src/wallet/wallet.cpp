@@ -569,6 +569,89 @@ void CWallet::SetMinVersion(enum WalletFeature nVersion, WalletBatch* batch_in)
     }
 }
 
+bool CWallet::SetKYCProvider(KYCProviderType type, const std::map<std::string, std::string>& config)
+{
+    LOCK(cs_wallet);
+
+    if (type == KYCProviderType::NONE) {
+        m_kyc_provider.reset();
+        m_kyc_provider_type = KYCProviderType::NONE;
+        m_kyc_sessions.clear();
+        return true;
+    }
+
+    auto provider = KYCProviderFactory::CreateProvider(type, config);
+    if (!provider) {
+        WalletLogPrintf("Failed to configure KYC provider %s\n", KYCProviderTypeToString(type));
+        return false;
+    }
+
+    m_kyc_provider_type = type;
+    m_kyc_provider = std::move(provider);
+    return true;
+}
+
+util::Result<KYCSession> CWallet::StartKYCVerification(KYCLevel level, const std::string& callback_url)
+{
+    LOCK(cs_wallet);
+
+    if (!m_kyc_provider) {
+        return util::Error{Untranslated("No KYC provider configured")};
+    }
+
+    auto session_res = m_kyc_provider->StartSession(level, GetName(), callback_url);
+    if (!session_res) return session_res;
+
+    m_kyc_sessions[session_res->session_id] = *session_res;
+    return session_res;
+}
+
+util::Result<KYCSession> CWallet::CheckKYCStatus(const std::string& session_id)
+{
+    LOCK(cs_wallet);
+
+    if (!m_kyc_provider) {
+        return util::Error{Untranslated("No KYC provider configured")};
+    }
+
+    auto session_res = m_kyc_provider->CheckSession(session_id);
+    if (!session_res) return session_res;
+
+    m_kyc_sessions[session_id] = *session_res;
+    return session_res;
+}
+
+bool CWallet::CompleteKYCVerification(const std::string& session_id)
+{
+    LOCK(cs_wallet);
+
+    if (!m_kyc_provider) return false;
+
+    auto session_it = m_kyc_sessions.find(session_id);
+    KYCSession session;
+    if (session_it != m_kyc_sessions.end()) {
+        session = session_it->second;
+    } else {
+        auto session_res = m_kyc_provider->CheckSession(session_id);
+        if (!session_res) return false;
+        session = *session_res;
+        m_kyc_sessions[session_id] = session;
+    }
+
+    if (session.status != "completed") return false;
+
+    auto credential_res = m_kyc_provider->GetCredential(session_id);
+    if (!credential_res) return false;
+
+    CCredentialMetadata metadata;
+    if (!m_kyc_provider->VerifyCredential(*credential_res, metadata)) return false;
+
+    SetCredential(CWalletCredential(*credential_res, metadata));
+    m_kyc_sessions[session_id].credential = *credential_res;
+    ScheduleCredentialRenewal();
+    return true;
+}
+
 void CWallet::ScheduleCredentialRenewal()
 {
     if (!IsVerified()) return;

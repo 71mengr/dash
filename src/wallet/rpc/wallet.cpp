@@ -379,8 +379,8 @@ static RPCHelpMan getwalletinfo()
                             {RPCResult::Type::BOOL, "is_verified", "Whether wallet is KYC verified"},
                             {RPCResult::Type::STR, "status", "Verification status (none, pending, basic, full, expired, revoked)"},
                             {RPCResult::Type::BOOL, "can_generate_addresses", "Whether wallet can generate new addresses"},
-                            {RPCResult::Type::STR, "issuer", "Credential issuer", RPCResult::Optional::ALIAS},
-                            {RPCResult::Type::NUM_TIME, "expires_at", "Expiration timestamp", RPCResult::Optional::ALIAS},
+                            {RPCResult::Type::STR, "issuer", /*optional=*/true, "Credential issuer"},
+                            {RPCResult::Type::NUM_TIME, "expires_at", /*optional=*/true, "Expiration timestamp"},
                         }},
                         {RPCResult::Type::BOOL, "private_keys_enabled", "false if privatekeys are disabled for this wallet (enforced watch-only wallet)"},
                         {RPCResult::Type::BOOL, "avoid_reuse", "whether this wallet tracks clean/dirty coins in terms of reuse"},
@@ -921,11 +921,6 @@ static RPCHelpMan createwallet()
     }
 
 bool require_verification = !request.params[8].isNull() && request.params[8].get_bool();
-if (require_verification) {
-    // Set a wallet flag or store in database that this wallet requires verification
-    // For now, we'll just log it
-    wallet->WalletLogPrintf("Wallet created with verification requirement\n");
-}
 #ifndef USE_BDB
     if (!(flags & WALLET_FLAG_DESCRIPTORS)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Compiled without bdb support (required for legacy wallets)");
@@ -943,6 +938,10 @@ if (require_verification) {
     if (!wallet) {
         RPCErrorCode code = status == DatabaseStatus::FAILED_ENCRYPT ? RPC_WALLET_ENCRYPTION_FAILED : RPC_WALLET_ERROR;
         throw JSONRPCError(code, error.original);
+    }
+    if (require_verification) {
+        // TODO: persist an explicit verification-required setting if wallet policy grows one.
+        wallet->WalletLogPrintf("Wallet created with verification requirement\n");
     }
     wallet->SetupLegacyScriptPubKeyMan();
 
@@ -1342,10 +1341,10 @@ static RPCHelpMan getwalletcredential()
                 {RPCResult::Type::STR, "status", "Verification status (none, pending, basic, full, expired, revoked)"},
                 {RPCResult::Type::BOOL, "is_verified", "Whether wallet is verified"},
                 {RPCResult::Type::BOOL, "is_valid", "Whether credential is valid (not expired/revoked)"},
-                {RPCResult::Type::STR, "issuer", "Credential issuer", RPCResult::Optional::ALIAS},
-                {RPCResult::Type::NUM_TIME, "expires_at", "Expiration timestamp", RPCResult::Optional::ALIAS},
-                {RPCResult::Type::STR, "credential_type", "Type of credential", RPCResult::Optional::ALIAS},
-                {RPCResult::Type::STR_HEX, "credential_hash", "Hash of credential data", RPCResult::Optional::ALIAS},
+                {RPCResult::Type::STR, "issuer", /*optional=*/true, "Credential issuer"},
+                {RPCResult::Type::NUM_TIME, "expires_at", /*optional=*/true, "Expiration timestamp"},
+                {RPCResult::Type::STR, "credential_type", /*optional=*/true, "Type of credential"},
+                {RPCResult::Type::STR_HEX, "credential_hash", /*optional=*/true, "Hash of credential data"},
             }
         },
         RPCExamples{

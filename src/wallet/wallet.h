@@ -1077,6 +1077,12 @@ public:
     bool IsVerified() const { return m_credential.IsVerified(); }
     CredentialStatus GetVerificationStatus() const { return m_credential.GetStatus(); }
     std::string GetVerificationFailureReason() const;
+    bool SetKYCProvider(KYCProviderType type, const std::map<std::string, std::string>& config);
+    util::Result<KYCSession> StartKYCVerification(KYCLevel level, const std::string& callback_url);
+    util::Result<KYCSession> CheckKYCStatus(const std::string& session_id);
+    bool CompleteKYCVerification(const std::string& session_id);
+    void ScheduleCredentialRenewal();
+    bool RenewCredential();
 
     // Check if wallet can generate new addresses (requires verification)
     bool CanGenerateAddresses() const;
