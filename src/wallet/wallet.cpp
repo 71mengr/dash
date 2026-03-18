@@ -8,6 +8,7 @@
 
 #include <chain.h>
 #include <chainparams.h>
+#include <clientversion.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <crypto/common.h>
@@ -711,6 +712,144 @@ bool CWallet::RenewCredential()
     
     return true;
 }
+
+namespace {
+uint256 ChatMessageIV(const CWalletChatMessage& message)
+{
+    return Hash(message.peer_address + "|" + std::to_string(message.id) + "|" + std::to_string(message.created_at) + "|" + std::to_string(static_cast<uint8_t>(message.direction)));
+}
+} // namespace
+
+bool CWallet::LoadChatMessage(const CWalletChatMessage& message)
+{
+    AssertLockHeld(cs_wallet);
+    return m_chat_messages.emplace(message.id, message).second;
+}
+
+void CWallet::LoadChatSyncState(const CWalletChatSyncState& sync_state)
+{
+    AssertLockHeld(cs_wallet);
+    m_chat_sync_state = sync_state;
+}
+
+util::Result<CWalletChatMessage> CWallet::AddChatMessage(const std::string& peer_address, ChatMessageDirection direction, const std::string& message)
+{
+    LOCK(cs_wallet);
+
+    if (peer_address.empty()) {
+        return util::Error{Untranslated("Peer address must not be empty")};
+    }
+
+    CWalletChatMessage entry;
+    entry.id = ++m_chat_sync_state.last_message_id;
+    entry.peer_address = peer_address;
+    entry.direction = direction;
+    entry.created_at = GetTime();
+
+    const CKeyingMaterial plain{message.begin(), message.end()};
+    if (IsCrypted()) {
+        if (IsLocked()) {
+            return util::Error{Untranslated("Wallet must be unlocked to encrypt chat messages")};
+        }
+        if (!EncryptSecret(vMasterKey, plain, ChatMessageIV(entry), entry.payload)) {
+            return util::Error{Untranslated("Failed to encrypt chat message")};
+        }
+        entry.encrypted = true;
+    } else {
+        entry.payload.assign(message.begin(), message.end());
+    }
+
+    WalletBatch batch(GetDatabase());
+    if (!batch.WriteChatMessage(entry) || !batch.WriteChatSyncState(m_chat_sync_state)) {
+        return util::Error{Untranslated("Failed to persist chat message")};
+    }
+
+    m_chat_messages.emplace(entry.id, entry);
+    return entry;
+}
+
+std::vector<CWalletChatMessage> CWallet::GetChatMessages(const std::optional<std::string>& peer_address) const
+{
+    LOCK(cs_wallet);
+    std::vector<CWalletChatMessage> messages;
+    for (const auto& [_, message] : m_chat_messages) {
+        if (peer_address && message.peer_address != *peer_address) continue;
+        messages.push_back(message);
+    }
+    return messages;
+}
+
+util::Result<std::string> CWallet::DecryptChatMessage(const CWalletChatMessage& message) const
+{
+    LOCK(cs_wallet);
+    if (!message.encrypted) {
+        return std::string{message.payload.begin(), message.payload.end()};
+    }
+    if (!IsCrypted()) {
+        return util::Error{Untranslated("Message is encrypted but wallet encryption is unavailable")};
+    }
+    if (IsLocked()) {
+        return util::Error{Untranslated("Wallet is locked")};
+    }
+    CKeyingMaterial plain;
+    if (!DecryptSecret(vMasterKey, message.payload, ChatMessageIV(message), plain)) {
+        return util::Error{Untranslated("Failed to decrypt chat message")};
+    }
+    return std::string{plain.begin(), plain.end()};
+}
+
+util::Result<std::string> CWallet::ExportChatSync() const
+{
+    LOCK(cs_wallet);
+    CDataStream stream(SER_DISK, CLIENT_VERSION);
+    stream << m_chat_sync_state;
+    stream << m_chat_messages;
+    return HexStr(stream);
+}
+
+util::Result<size_t> CWallet::ImportChatSync(const std::string& sync_blob_hex)
+{
+    std::vector<unsigned char> bytes;
+    if (!IsHex(sync_blob_hex)) {
+        return util::Error{Untranslated("Sync payload must be hex encoded")};
+    }
+    bytes = ParseHex(sync_blob_hex);
+
+    CWalletChatSyncState sync_state;
+    std::map<uint64_t, CWalletChatMessage> messages;
+    try {
+        CDataStream stream(bytes, SER_DISK, CLIENT_VERSION);
+        stream >> sync_state;
+        stream >> messages;
+    } catch (const std::exception&) {
+        return util::Error{Untranslated("Failed to decode sync payload")};
+    }
+
+    LOCK(cs_wallet);
+    WalletBatch batch(GetDatabase());
+    size_t imported{0};
+    for (const auto& [id, message] : messages) {
+        if (m_chat_messages.count(id) != 0) continue;
+        if (!batch.WriteChatMessage(message)) {
+            return util::Error{Untranslated("Failed to persist imported chat message")};
+        }
+        m_chat_messages.emplace(id, message);
+        imported++;
+    }
+    m_chat_sync_state.last_message_id = std::max(m_chat_sync_state.last_message_id, sync_state.last_message_id);
+    m_chat_sync_state.last_sync_time = GetTime();
+    if (!batch.WriteChatSyncState(m_chat_sync_state)) {
+        return util::Error{Untranslated("Failed to persist chat sync state")};
+    }
+    return imported;
+}
+
+CWalletChatSyncState CWallet::GetChatSyncState() const
+{
+    LOCK(cs_wallet);
+    return m_chat_sync_state;
+}
+
 std::set<uint256> CWallet::GetConflicts(const uint256& txid) const
 {
     std::set<uint256> result;
@@ -4335,4 +4474,3 @@ bool CWallet::CanGenerateAddresses() const
 }
 
 } // namespace wallet
-

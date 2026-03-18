@@ -31,6 +31,8 @@ class CKeyPool;
 class CMasterKey;
 class CWallet;
 class CWalletTx;
+struct CWalletChatMessage;
+struct CWalletChatSyncState;
 struct WalletContext;
 
 /**
@@ -68,6 +70,8 @@ extern const std::string BESTBLOCK_NOMERKLE;
 extern const std::string CRYPTED_HDCHAIN;
 extern const std::string CRYPTED_KEY;
 extern const std::string COINJOIN_SALT;
+extern const std::string CHAT_MESSAGE;
+extern const std::string CHAT_SYNC_STATE;
 extern const std::string CSCRIPT;
 extern const std::string DEFAULTKEY;
 extern const std::string DESTDATA;
@@ -257,6 +261,8 @@ public:
     bool EraseCredential();
 
     bool ReadCredential(CWalletCredential& credential);
+    bool WriteChatMessage(const CWalletChatMessage& message);
+    bool WriteChatSyncState(const CWalletChatSyncState& sync_state);
 
     bool WriteCredentialMetadata(const CCredentialMetadata& metadata);
 

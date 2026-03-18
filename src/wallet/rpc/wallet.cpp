@@ -1455,6 +1455,115 @@ static RPCHelpMan importcredential()
     };
 }
 
+static UniValue ChatMessageToJSON(const CWallet& wallet, const CWalletChatMessage& message, bool include_body)
+{
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("id", static_cast<uint64_t>(message.id));
+    obj.pushKV("address", message.peer_address);
+    obj.pushKV("direction", message.direction == ChatMessageDirection::OUTBOUND ? "outbound" : "inbound");
+    obj.pushKV("created_at", message.created_at);
+    obj.pushKV("encrypted", message.encrypted);
+    if (include_body) {
+        auto body = wallet.DecryptChatMessage(message);
+        if (body) {
+            obj.pushKV("message", *body);
+        } else {
+            obj.pushKV("message", "[locked]");
+            obj.pushKV("message_error", util::ErrorString(body).original);
+        }
+    }
+    return obj;
+}
+
+static RPCHelpMan chat()
+{
+    return RPCHelpMan{"chat",
+        "\nWallet chat storage and sync helpers.\n",
+        {
+            {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "One of \"message\", \"list\", \"syncstatus\", \"syncexport\", or \"syncimport\"."},
+            {"arg1", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Command-specific first argument"},
+            {"arg2", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Command-specific second argument"},
+        },
+        RPCResult{
+            RPCResult::Type::ANY, "", "Command-specific result",
+        },
+        RPCExamples{
+            HelpExampleCli("chat", "message XyZAddress \"hello\"")
+            + HelpExampleCli("chat", "list XyZAddress")
+            + HelpExampleCli("chat", "syncexport")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    const std::string command = request.params[0].get_str();
+
+    if (command == "message") {
+        if (request.params.size() < 3) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "chat message requires <address> and <message>");
+        }
+        const std::string address = request.params[1].get_str();
+        const CTxDestination dest = DecodeDestination(address);
+        if (!IsValidDestination(dest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dash address");
+        }
+        auto saved = pwallet->AddChatMessage(address, ChatMessageDirection::OUTBOUND, request.params[2].get_str());
+        if (!saved) {
+            throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(saved).original);
+        }
+        return ChatMessageToJSON(*pwallet, *saved, /*include_body=*/true);
+    }
+
+    if (command == "list") {
+        const std::optional<std::string> address = request.params.size() > 1 && !request.params[1].isNull()
+            ? std::make_optional(request.params[1].get_str())
+            : std::nullopt;
+        UniValue result(UniValue::VARR);
+        for (const auto& message : pwallet->GetChatMessages(address)) {
+            result.push_back(ChatMessageToJSON(*pwallet, message, /*include_body=*/true));
+        }
+        return result;
+    }
+
+    if (command == "syncstatus") {
+        const auto state = pwallet->GetChatSyncState();
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("last_message_id", static_cast<uint64_t>(state.last_message_id));
+        result.pushKV("last_sync_time", state.last_sync_time);
+        result.pushKV("message_count", static_cast<uint64_t>(pwallet->GetChatMessages().size()));
+        return result;
+    }
+
+    if (command == "syncexport") {
+        auto sync_blob = pwallet->ExportChatSync();
+        if (!sync_blob) {
+            throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(sync_blob).original);
+        }
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("sync_blob", *sync_blob);
+        result.pushKV("encoding", "hex");
+        return result;
+    }
+
+    if (command == "syncimport") {
+        if (request.params.size() < 2) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "chat syncimport requires a sync blob");
+        }
+        auto imported = pwallet->ImportChatSync(request.params[1].get_str());
+        if (!imported) {
+            throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(imported).original);
+        }
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("imported", static_cast<uint64_t>(*imported));
+        return result;
+    }
+
+    throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown chat command");
+},
+    };
+}
+
 RPCHelpMan simulaterawtransaction()
 {
     return RPCHelpMan{"simulaterawtransaction",
@@ -1715,6 +1824,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &setwalletcredential},
         {"wallet", &getwalletcredential},
         {"wallet", &importcredential},
+        {"wallet", &chat},
          {"wallet", &setkycprovider},
          {"wallet", &startkyc},
          {"wallet", &completekyc},

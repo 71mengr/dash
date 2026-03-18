@@ -113,6 +113,8 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     // Clicking on a transaction on the overview pre-selects the transaction on the transaction history page
     connect(overviewPage, &OverviewPage::transactionClicked, transactionView, qOverload<const QModelIndex&>(&TransactionView::focusTransaction));
     connect(overviewPage, &OverviewPage::outOfSyncWarningClicked, this, &WalletView::outOfSyncWarningClicked);
+    connect(overviewPage, &OverviewPage::signMessageRequested, this, &WalletView::gotoSignMessageTab);
+    connect(overviewPage, &OverviewPage::verifyMessageRequested, this, &WalletView::gotoVerifyMessageTab);
 
     connect(sendCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);
     connect(coinJoinCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);

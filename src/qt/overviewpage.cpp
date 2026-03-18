@@ -16,6 +16,7 @@
 #include <qt/transactionrecord.h>
 #include <qt/transactiontablemodel.h>
 #include <qt/utilitydialog.h>
+#include <qt/addresstablemodel.h>
 #include <qt/walletmodel.h>
 
 #include <coinjoin/options.h>
@@ -150,6 +151,7 @@ OverviewPage::OverviewPage(QWidget* parent) :
 
     GUIUtil::setFont({ui->label_4,
                       ui->label_5,
+                      ui->labelChatHeader,
                       ui->labelCoinJoinHeader
                      }, {GUIUtil::FontWeight::Bold, 16});
 
@@ -173,6 +175,9 @@ OverviewPage::OverviewPage(QWidget* parent) :
     ui->listTransactions->setAttribute(Qt::WA_MacShowFocusRect, false);
 
     connect(ui->listTransactions, &TransactionOverviewWidget::clicked, this, &OverviewPage::handleTransactionClicked);
+    connect(ui->buttonChatSignMessage, &QPushButton::clicked, this, &OverviewPage::openSignMessageDialog);
+    connect(ui->buttonChatVerifyMessage, &QPushButton::clicked, this, &OverviewPage::openVerifyMessageDialog);
+    connect(ui->buttonChatClearDraft, &QPushButton::clicked, ui->textChatDraft, &QTextEdit::clear);
 
     // init "out of sync" warning labels
     ui->labelWalletStatus->setText("(" + tr("out of sync") + ")");
@@ -190,6 +195,7 @@ OverviewPage::OverviewPage(QWidget* parent) :
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
     updateVerificationSection();
+    refreshChatIdentity();
 
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, [this]{ coinJoinStatus(); });
@@ -320,6 +326,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         setBalance(balances);
         connect(model, &WalletModel::balanceChanged, this, &OverviewPage::setBalance);
         connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::updateVerificationSection);
+        connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::refreshChatIdentity);
 
         updateWatchOnlyLabels((wallet.haveWatchOnly() && !model->wallet().privateKeysDisabled()) || gArgs.GetBoolArg("-debug-ui", false));
         connect(model, &WalletModel::notifyWatchonlyChanged, [this](bool showWatchOnly) {
@@ -349,6 +356,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         ui->toggleCoinJoin->setFocusPolicy(Qt::NoFocus);
 
         updateVerificationSection();
+        refreshChatIdentity();
     }
 }
 
@@ -412,6 +420,47 @@ void OverviewPage::updateVerificationSection()
         ? tr("Wallet verification is active.")
         : QString::fromStdString(verification.failure_reason.empty() ? std::string{"Wallet verification has not completed yet."} : verification.failure_reason);
     ui->labelCredentialDetailsValue->setText(details);
+}
+
+void OverviewPage::refreshChatIdentity()
+{
+    const bool has_wallet = walletModel != nullptr;
+    ui->frameChat->setVisible(has_wallet);
+    if (!has_wallet) {
+        return;
+    }
+
+    QString identity_address{tr("No receiving address available yet")};
+    if (AddressTableModel* address_model = walletModel->getAddressTableModel()) {
+        for (int row = 0; row < address_model->rowCount(QModelIndex()); ++row) {
+            const QModelIndex type_index = address_model->index(row, AddressTableModel::Label, QModelIndex());
+            if (type_index.data(AddressTableModel::TypeRole).toString() == AddressTableModel::Receive) {
+                identity_address = address_model->index(row, AddressTableModel::Address, QModelIndex()).data(Qt::DisplayRole).toString();
+                break;
+            }
+        }
+    }
+
+    const interfaces::WalletVerification verification = walletModel->wallet().getVerification();
+    const QString verification_status = formatVerificationStatus(verification);
+    ui->labelChatIdentityValue->setText(identity_address);
+    ui->labelChatIdentityValue->setToolTip(identity_address);
+    ui->labelChatVerifiedValue->setText(verification_status);
+    ui->labelChatRouteValue->setText(clientModel != nullptr && clientModel->getNumConnections() > 0
+        ? tr("Connected to %n peer(s); chat packets can be routed once a transport is implemented.", "", clientModel->getNumConnections())
+        : tr("Waiting for network peers before routing wallet-authenticated chat."));
+    ui->labelChatVoiceValue->setText(tr("Microphone capture is reserved for a future transport layer; this build exposes the voice-ready workflow in the GUI."));
+}
+
+void OverviewPage::openSignMessageDialog()
+{
+    const QString address = ui->labelChatIdentityValue->text();
+    Q_EMIT signMessageRequested(address.startsWith(tr("No receiving address")) ? QString() : address);
+}
+
+void OverviewPage::openVerifyMessageDialog()
+{
+    Q_EMIT verifyMessageRequested(ui->editChatRecipient->text().trimmed());
 }
 
 void OverviewPage::showOutOfSyncWarning(bool fShow)

@@ -128,6 +128,37 @@ class CCoinControl;
 class CWalletTx;
 class ReserveDestination;
 
+enum class ChatMessageDirection : uint8_t {
+    INBOUND = 0,
+    OUTBOUND = 1,
+};
+
+struct CWalletChatMessage
+{
+    uint64_t id{0};
+    std::string peer_address;
+    ChatMessageDirection direction{ChatMessageDirection::OUTBOUND};
+    int64_t created_at{0};
+    bool encrypted{false};
+    std::vector<unsigned char> payload;
+
+    SERIALIZE_METHODS(CWalletChatMessage, obj)
+    {
+        READWRITE(obj.id, obj.peer_address, obj.direction, obj.created_at, obj.encrypted, obj.payload);
+    }
+};
+
+struct CWalletChatSyncState
+{
+    uint64_t last_message_id{0};
+    int64_t last_sync_time{0};
+
+    SERIALIZE_METHODS(CWalletChatSyncState, obj)
+    {
+        READWRITE(obj.last_message_id, obj.last_sync_time);
+    }
+};
+
 extern RecursiveMutex cs_main;
 
 /** (client) version numbers for particular wallet features */
@@ -248,6 +279,8 @@ class CWallet final : public WalletStorage, public interfaces::Chain::Notificati
 {
 private:
     CWalletCredential m_credential;
+    std::map<uint64_t, CWalletChatMessage> m_chat_messages;
+    CWalletChatSyncState m_chat_sync_state;
 
     CKeyingMaterial vMasterKey GUARDED_BY(cs_wallet);
 
@@ -598,6 +631,8 @@ public:
 
     //! Adds a destination data tuple to the store, without saving it to disk
     void LoadDestData(const CTxDestination& dest, const std::string& key, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool LoadChatMessage(const CWalletChatMessage& message) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void LoadChatSyncState(const CWalletChatSyncState& sync_state) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime GUARDED_BY(cs_wallet){0};
@@ -1083,6 +1118,12 @@ public:
     bool CompleteKYCVerification(const std::string& session_id);
     void ScheduleCredentialRenewal();
     bool RenewCredential();
+    util::Result<CWalletChatMessage> AddChatMessage(const std::string& peer_address, ChatMessageDirection direction, const std::string& message);
+    std::vector<CWalletChatMessage> GetChatMessages(const std::optional<std::string>& peer_address = std::nullopt) const;
+    util::Result<std::string> DecryptChatMessage(const CWalletChatMessage& message) const;
+    util::Result<std::string> ExportChatSync() const;
+    util::Result<size_t> ImportChatSync(const std::string& sync_blob_hex);
+    CWalletChatSyncState GetChatSyncState() const;
 
     // Check if wallet can generate new addresses (requires verification)
     bool CanGenerateAddresses() const;

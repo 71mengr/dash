@@ -352,7 +352,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QFrame" name="frameCredential">
+       <widget class="QFrame" name="frameCredential">
          <property name="frameShape">
           <enum>QFrame::StyledPanel</enum>
          </property>
@@ -491,6 +491,180 @@
               </property>
               <property name="textInteractionFlags">
                <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="frameChat">
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Raised</enum>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayoutChat">
+          <item>
+           <widget class="QLabel" name="labelChatHeader">
+            <property name="text">
+             <string>Wallet Chat</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelChatIntro">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Prepare peer-to-peer chat sessions that authenticate participants with their wallet address and signature before a dedicated transport is plugged into the network layer.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QFormLayout" name="formLayoutChat">
+            <property name="fieldGrowthPolicy">
+             <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+            </property>
+            <property name="horizontalSpacing">
+             <number>11</number>
+            </property>
+            <property name="verticalSpacing">
+             <number>12</number>
+            </property>
+            <item row="0" column="0">
+             <widget class="QLabel" name="labelChatIdentityText">
+              <property name="text">
+               <string>Verified identity:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLabel" name="labelChatIdentityValue">
+              <property name="text">
+               <string>No receiving address available yet</string>
+              </property>
+              <property name="textInteractionFlags">
+               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="labelChatVerifiedText">
+              <property name="text">
+               <string>Verification:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QLabel" name="labelChatVerifiedValue">
+              <property name="text">
+               <string>Not verified</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="labelChatRecipientText">
+              <property name="text">
+               <string>Recipient wallet:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QLineEdit" name="editChatRecipient">
+              <property name="placeholderText">
+               <string>Paste the recipient wallet address to verify the sender</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="labelChatEndpointText">
+              <property name="text">
+               <string>Peer endpoint:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QLineEdit" name="editChatEndpoint">
+              <property name="placeholderText">
+               <string>ip:port or hostname for the intended chat peer</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="labelChatRouteText">
+              <property name="text">
+               <string>Network routing:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QLabel" name="labelChatRouteValue">
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Waiting for network peers before routing wallet-authenticated chat.</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="0">
+             <widget class="QLabel" name="labelChatVoiceText">
+              <property name="text">
+               <string>Voice workflow:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <widget class="QLabel" name="labelChatVoiceValue">
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Microphone capture is reserved for a future transport layer; this build exposes the voice-ready workflow in the GUI.</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="0">
+             <widget class="QLabel" name="labelChatDraftText">
+              <property name="text">
+               <string>Draft message:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="1">
+             <widget class="QTextEdit" name="textChatDraft">
+              <property name="placeholderText">
+               <string>Write the message that you want to sign and send across the network.</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutChatButtons">
+            <item>
+             <widget class="QPushButton" name="buttonChatSignMessage">
+              <property name="text">
+               <string>Sign with Wallet</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonChatVerifyMessage">
+              <property name="text">
+               <string>Verify Sender</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonChatClearDraft">
+              <property name="text">
+               <string>Clear Draft</string>
               </property>
              </widget>
             </item>

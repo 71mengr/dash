@@ -47,6 +47,8 @@ public Q_SLOTS:
 Q_SIGNALS:
     void transactionClicked(const QModelIndex &index);
     void outOfSyncWarningClicked();
+    void signMessageRequested(const QString& address);
+    void verifyMessageRequested(const QString& address);
 
 private:
     QTimer* timer{nullptr};
@@ -76,6 +78,9 @@ private Q_SLOTS:
     void updateAlerts(const QString &warnings);
     void updateWatchOnlyLabels(bool showWatchOnly);
     void setMonospacedFont(const QFont&);
+    void refreshChatIdentity();
+    void openSignMessageDialog();
+    void openVerifyMessageDialog();
 };
 
 #endif // BITCOIN_QT_OVERVIEWPAGE_H

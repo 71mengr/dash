@@ -39,6 +39,8 @@ const std::string BESTBLOCK{"bestblock"};
 const std::string CRYPTED_KEY{"ckey"};
 const std::string CRYPTED_HDCHAIN{"chdchain"};
 const std::string COINJOIN_SALT{"cj_salt"};
+const std::string CHAT_MESSAGE{"chatmsg"};
+const std::string CHAT_SYNC_STATE{"chatsync"};
 const std::string CSCRIPT{"cscript"};
 const std::string DEFAULTKEY{"defaultkey"};
 const std::string DESTDATA{"destdata"};
@@ -232,6 +234,16 @@ bool WalletBatch::WriteCoinJoinSalt(const uint256& salt)
 bool WalletBatch::WriteGovernanceObject(const Governance::Object& obj)
 {
     return WriteIC(std::make_pair(DBKeys::G_OBJECT, obj.GetHash()), obj, false);
+}
+
+bool WalletBatch::WriteChatMessage(const CWalletChatMessage& message)
+{
+    return WriteIC(std::make_pair(DBKeys::CHAT_MESSAGE, message.id), message);
+}
+
+bool WalletBatch::WriteChatSyncState(const CWalletChatSyncState& sync_state)
+{
+    return WriteIC(DBKeys::CHAT_SYNC_STATE, sync_state);
 }
 
 bool WalletBatch::WriteActiveScriptPubKeyMan(const uint256& id, bool internal)
@@ -663,6 +675,23 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 strErr = "Invalid governance object: LoadGovernanceObject";
                 return false;
             }
+        } else if (strType == DBKeys::CHAT_MESSAGE) {
+            uint64_t id;
+            CWalletChatMessage message;
+            ssKey >> id;
+            ssValue >> message;
+            if (message.id != id) {
+                strErr = "Invalid chat message: id mismatch";
+                return false;
+            }
+            if (!pwallet->LoadChatMessage(message)) {
+                strErr = "Invalid chat message: duplicate id";
+                return false;
+            }
+        } else if (strType == DBKeys::CHAT_SYNC_STATE) {
+            CWalletChatSyncState sync_state;
+            ssValue >> sync_state;
+            pwallet->LoadChatSyncState(sync_state);
         } else if (strType == DBKeys::OLD_KEY) {
             strErr = "Found unsupported 'wkey' record, try loading with version 0.17";
             return false;
