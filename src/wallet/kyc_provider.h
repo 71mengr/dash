@@ -5,6 +5,7 @@
 #ifndef BITCOIN_WALLET_KYC_PROVIDER_H
 #define BITCOIN_WALLET_KYC_PROVIDER_H
 
+#include <util/result.h>
 #include <util/translation.h>
 #include <wallet/credential.h>
 #include <wallet/walletutil.h>

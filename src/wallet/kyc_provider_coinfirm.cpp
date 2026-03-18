@@ -94,7 +94,7 @@ util::Result<std::vector<unsigned char>> CoinfirmProvider::GetCredential(const s
 {
     auto session_res = CheckSession(session_id);
     if (!session_res) {
-        return util::Error{session_res};
+        return util::Error{util::ErrorString(session_res)};
     }
     
     const auto& session = *session_res;
