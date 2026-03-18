@@ -646,7 +646,10 @@ bool CWallet::CompleteKYCVerification(const std::string& session_id)
     CCredentialMetadata metadata;
     if (!m_kyc_provider->VerifyCredential(*credential_res, metadata)) return false;
 
-    SetCredential(CWalletCredential(*credential_res, metadata));
+    CWalletCredential credential;
+    if (!credential.SetCredential(*credential_res)) return false;
+    credential.SetMetadata(metadata);
+    SetCredential(credential);
     m_kyc_sessions[session_id].credential = *credential_res;
     ScheduleCredentialRenewal();
     return true;

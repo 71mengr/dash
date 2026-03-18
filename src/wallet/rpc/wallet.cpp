@@ -1586,7 +1586,6 @@ RPCHelpMan dumpprivkey();
 RPCHelpMan importprivkey();
 RPCHelpMan importaddress();
 RPCHelpMan importpubkey();
-RPCHelpMan importcredential();
 RPCHelpMan dumpwallet();
 RPCHelpMan importwallet();
 RPCHelpMan importprunedfunds();
