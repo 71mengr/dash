@@ -1076,13 +1076,10 @@ public:
     CWalletCredential GetCredential() const { return m_credential; }
     bool IsVerified() const { return m_credential.IsVerified(); }
     CredentialStatus GetVerificationStatus() const { return m_credential.GetStatus(); }
-    
+    std::string GetVerificationFailureReason() const;
+
     // Check if wallet can generate new addresses (requires verification)
-    bool CanGenerateAddresses() const {
-        // For Phase 1, we just check verification status
-        // Phase 2 will implement actual restrictions
-        return IsVerified();
-    }
+    bool CanGenerateAddresses() const;
 };
 
 /**
