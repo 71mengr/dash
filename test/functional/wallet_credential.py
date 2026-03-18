@@ -40,6 +40,21 @@ class WalletCredentialTest(BitcoinTestFramework):
             "Cannot generate change address: Wallet is not KYC verified",
             wallet.getrawchangeaddress,
         )
+        assert_raises_rpc_error(
+            -4,
+            "Cannot create multisig address: Wallet is not KYC verified",
+            wallet.addmultisigaddress,
+            1,
+            [
+                "0250863AD64A87AE8A2FE83C1AF1A8403CB5562B4D6FEE9C4E5B1C7E2C4A1F8D8B",
+                "03F02889207B4C2F0A0EAB42E7A0B7F9A8EE0FB13BCE2C5A6C5D918ECB0CDC95B6",
+            ],
+        )
+        assert_raises_rpc_error(
+            -4,
+            "Cannot create new keypool: Wallet is not KYC verified",
+            wallet.newkeypool,
+        )
 
         self.log.info("Set a credential and verify address generation works")
         result = wallet.setwalletcredential("basic", "test-suite", 30)
@@ -65,8 +80,17 @@ class WalletCredentialTest(BitcoinTestFramework):
 
         address = wallet.getnewaddress()
         change_address = wallet.getrawchangeaddress()
+        multisig = wallet.addmultisigaddress(
+            1,
+            [
+                wallet.getaddressinfo(wallet.getnewaddress())["pubkey"],
+                wallet.getaddressinfo(wallet.getnewaddress())["pubkey"],
+            ],
+        )
+        wallet.newkeypool()
         assert_equal(wallet.getaddressinfo(address)["ismine"], True)
         assert_equal(wallet.getaddressinfo(change_address)["ischange"], True)
+        assert_equal(wallet.getaddressinfo(multisig["address"])["ismine"], True)
 
 
 if __name__ == '__main__':

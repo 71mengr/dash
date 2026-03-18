@@ -236,6 +236,13 @@ RPCHelpMan addmultisigaddress()
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
 
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot create multisig address: %s", reason));
+        }
+    }
+
     LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet);
 
     LOCK2(pwallet->cs_wallet, spk_man.cs_KeyStore);
@@ -346,6 +353,13 @@ RPCHelpMan newkeypool()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot create new keypool: %s", reason));
+        }
+    }
 
     LOCK(pwallet->cs_wallet);
 
