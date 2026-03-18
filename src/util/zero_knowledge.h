@@ -69,7 +69,7 @@ struct ExtendedProof
         READWRITE(obj.challenge_hash);
         READWRITE(obj.proof_data);
         READWRITE(obj.created_at);
-        obj.type = static_cast<ProofType>(type_byte);
+        SER_READ(obj, obj.type = static_cast<ProofType>(type_byte));
     }
     
     size_t GetSize() const

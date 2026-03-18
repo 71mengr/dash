@@ -7,6 +7,7 @@
 #include <crypto/sha256.h>
 #include <logging.h>
 #include <random.h>
+#include <streams.h>
 #include <util/strencodings.h>
 #include <util/time.h>
 #include <util/vector.h>
@@ -353,7 +354,6 @@ bool SetMembershipProof::VerifySetProofData(const std::vector<unsigned char>& da
         test_hasher.Finalize(test_hash.begin());
         
         if (test_hash == value_hash) {
-            m_committed_value = item;
             return true;
         }
     }
@@ -519,7 +519,7 @@ bool CompositeProof::Create()
     // Store each proof
     for (const auto& p : m_proofs) {
         std::vector<unsigned char> serialized;
-        CVectorWriter{SER_NETWORK, 0, serialized, p};
+        CVectorWriter{SER_NETWORK, 0, serialized, 0, p};
         uint32_t size = serialized.size();
         proof_data.insert(proof_data.end(), reinterpret_cast<unsigned char*>(&size),
                           reinterpret_cast<unsigned char*>(&size) + sizeof(size));
@@ -600,7 +600,7 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
         
         if (data.size() < pos + size) return false;
         
-        VectorReader{SER_NETWORK, 0, data, pos, pos + size} >> m_proofs.emplace_back();
+        CDataStream{Span<const unsigned char>(data.data() + pos, size), SER_NETWORK, 0} >> m_proofs.emplace_back();
         pos += size;
     }
     
@@ -694,7 +694,7 @@ bool VerifyCombinedKYCProof(const ExtendedProof& proof, int min_age,
 std::string ProofToBase64(const ExtendedProof& proof)
 {
     std::vector<unsigned char> serialized;
-    CVectorWriter{SER_NETWORK, 0, serialized, proof};
+    CVectorWriter{SER_NETWORK, 0, serialized, 0, proof};
     return EncodeBase64(serialized);
 }
 
@@ -703,7 +703,7 @@ ExtendedProof ProofFromBase64(const std::string& base64)
     ExtendedProof proof;
     auto decoded = DecodeBase64(base64);
     if (decoded) {
-        VectorReader{SER_NETWORK, 0, *decoded, 0} >> proof;
+        CDataStream{Span<const unsigned char>(decoded->data(), decoded->size()), SER_NETWORK, 0} >> proof;
     }
     return proof;
 }
