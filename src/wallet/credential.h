@@ -90,11 +90,17 @@ public:
 
     SERIALIZE_METHODS(CWalletCredential, obj)
     {
-        uint8_t statusByte = static_cast<uint8_t>(obj.status);
         READWRITE(obj.vchCredential);
-        READWRITE(statusByte);
+        SER_WRITE(obj, {
+            uint8_t statusByte = static_cast<uint8_t>(obj.status);
+            READWRITE(statusByte);
+        });
+        SER_READ(obj, {
+            uint8_t statusByte;
+            READWRITE(statusByte);
+            obj.status = static_cast<CredentialStatus>(statusByte);
+        });
         READWRITE(obj.metadata);
-        obj.status = static_cast<CredentialStatus>(statusByte);
     }
 
     bool CanPerformSensitiveOperations() const;
