@@ -25,7 +25,7 @@ from typing import List, Optional
 # Height at which BIP9 deployment DEPLOYMENT_V24 is activated
 V24_ACTIVATION_THRESHOLD = 100
 # See CMainParams in src/chainparams.cpp
-DEFAULT_PORT_MAINNET_CORE_P2P = 9999
+DEFAULT_PORT_MAINNET_CORE_P2P = 11118
 # See CRegTestParams in src/chainparams.cpp
 DEFAULT_PORT_PLATFORM_P2P = 22200
 DEFAULT_PORT_PLATFORM_HTTP = 22201
