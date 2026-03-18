@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <coinjoin/util.h>
+#include <logging.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
 #include <util/translation.h>
@@ -31,7 +32,10 @@ CKeyHolder::CKeyHolder(CWallet* pwallet) :
     reserveDestination(pwallet)
 {
     auto dest_opt = reserveDestination.GetReservedDestination(false);
-    assert(dest_opt);
+    if (!dest_opt) {
+        LogPrintf("CKeyHolder::%s -- failed to reserve destination: %s\n", __func__, util::ErrorString(dest_opt).original);
+        return;
+    }
     dest = *dest_opt;
 }
 
@@ -55,6 +59,10 @@ CScript CKeyHolderStorage::AddKey(CWallet* pwallet)
 {
     auto keyHolderPtr = std::make_unique<CKeyHolder>(pwallet);
     auto script = keyHolderPtr->GetScriptForDestination();
+    if (script.empty()) {
+        LogPrintf("CKeyHolderStorage::%s -- failed to reserve destination for CoinJoin output\n", __func__);
+        return CScript();
+    }
 
     LOCK(cs_storage);
     storage.emplace_back(std::move(keyHolderPtr));
@@ -104,7 +112,10 @@ CTransactionBuilderOutput::CTransactionBuilderOutput(CTransactionBuilder* pTxBui
     assert(pTxBuilder);
     LOCK(wallet.cs_wallet);
     auto dest_opt = dest.GetReservedDestination(false);
-    assert(dest_opt);
+    if (!dest_opt) {
+        LogPrintf("CTransactionBuilderOutput::%s -- failed to reserve destination: %s\n", __func__, util::ErrorString(dest_opt).original);
+        return;
+    }
     script = ::GetScriptForDestination(*dest_opt);
 }
 
@@ -218,7 +229,12 @@ CTransactionBuilderOutput* CTransactionBuilder::AddOutput(CAmount nAmountOutput)
 {
     if (CouldAddOutput(nAmountOutput)) {
         LOCK(cs_outputs);
-        vecOutputs.push_back(std::make_unique<CTransactionBuilderOutput>(this, m_wallet, nAmountOutput));
+        auto output = std::make_unique<CTransactionBuilderOutput>(this, m_wallet, nAmountOutput);
+        if (output->GetScript().empty()) {
+            LogPrintf("CTransactionBuilder::%s -- failed to create CoinJoin output destination\n", __func__);
+            return nullptr;
+        }
+        vecOutputs.push_back(std::move(output));
         return vecOutputs.back().get();
     }
     return nullptr;

@@ -1612,6 +1612,9 @@ bool CWallet::IsHDEnabled() const
 bool CWallet::CanGetAddresses(bool internal) const
 {
     LOCK(cs_wallet);
+    if (!IsVerified()) {
+        return false;
+    }
     if (m_spk_managers.empty()) return false;
     auto spk_man = GetScriptPubKeyMan(internal);
     if (spk_man && spk_man->CanGetAddresses(internal)) {

@@ -1398,6 +1398,11 @@ bool CCoinJoinClientSession::PrepareDenominate(int nMinRounds, int nMaxRounds, s
                 continue;
             }
             scriptDenom = keyHolderStorage.AddKey(m_wallet.get());
+            if (scriptDenom.empty()) {
+                keyHolderStorage.ReturnAll();
+                strErrorRet = "Cannot prepare denominated outputs without a verified wallet address";
+                return false;
+            }
         }
         vecPSInOutPairsRet.emplace_back(entry, CTxOut(nDenomAmount, scriptDenom));
         // step is complete
@@ -1428,6 +1433,10 @@ bool CCoinJoinClientSession::MakeCollateralAmounts()
     if (!CCoinJoinClientOptions::IsEnabled()) return false;
 
     LOCK(m_wallet->cs_wallet);
+    if (!m_wallet->IsVerified()) {
+        WalletCJLogPrint(m_wallet, "CCoinJoinClientSession::%s -- wallet not verified: %s\n", __func__, m_wallet->GetVerificationFailureReason());
+        return false;
+    }
 
     // NOTE: We do not allow txes larger than 100 kB, so we have to limit number of inputs here.
     // We still want to consume a lot of inputs to avoid creating only smaller denoms though.
@@ -1576,7 +1585,11 @@ bool CCoinJoinClientSession::CreateCollateralTransaction(CMutableTransaction& tx
         CScript scriptChange;
         ReserveDestination reserveDest(m_wallet.get());
         auto dest_opt = reserveDest.GetReservedDestination(true);
-        assert(dest_opt); // should never fail, as we just unlocked
+        if (!dest_opt) {
+            strReason = strprintf("Unable to reserve collateral change address: %s", util::ErrorString(dest_opt).original);
+            LogPrintf("CCoinJoinClientSession::%s -- %s\n", __func__, strReason);
+            return false;
+        }
         scriptChange = GetScriptForDestination(*dest_opt);
         reserveDest.KeepDestination();
         // return change
@@ -1600,6 +1613,10 @@ bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate)
     if (!CCoinJoinClientOptions::IsEnabled()) return false;
 
     LOCK(m_wallet->cs_wallet);
+    if (!m_wallet->IsVerified()) {
+        WalletCJLogPrint(m_wallet, "CCoinJoinClientSession::%s -- wallet not verified: %s\n", __func__, m_wallet->GetVerificationFailureReason());
+        return false;
+    }
 
     // NOTE: We do not allow txes larger than 100 kB, so we have to limit number of inputs here.
     // We still want to consume a lot of inputs to avoid creating only smaller denoms though.

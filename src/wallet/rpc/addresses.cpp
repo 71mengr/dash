@@ -296,6 +296,13 @@ RPCHelpMan keypoolrefill()
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: Private keys are disabled for this wallet");
     }
 
+    if (!pwallet->IsVerified()) {
+        std::string reason = pwallet->GetVerificationFailureReason();
+        if (!reason.empty()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot refill keypool: %s", reason));
+        }
+    }
+
     LOCK(pwallet->cs_wallet);
 
     // 0 is interpreted by TopUpKeyPool() as the default keypool size given by -keypool
