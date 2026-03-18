@@ -68,6 +68,49 @@ struct CoinfirmProvider::Impl {
     }
 };
 
+struct VerifiableCredentialProvider::Impl {
+    std::map<std::string, KYCSession> mock_sessions;
+    std::map<std::string, CTrustedIssuer> trusted_issuers;
+
+    util::Result<KYCSession> MockStartSession(KYCLevel level, const std::string& wallet_name)
+    {
+        KYCSession session;
+        session.session_id = "vc_" + GetRandHash().ToString().substr(0, 16);
+        session.provider = KYCProviderType::CUSTOM_VC;
+        session.level = level;
+        session.url = "vc://credential-request/" + session.session_id + "?wallet=" + wallet_name;
+        session.created_at = GetTime();
+        session.expires_at = session.created_at + 24 * 60 * 60;
+        session.status = "pending";
+
+        mock_sessions[session.session_id] = session;
+        return session;
+    }
+
+    util::Result<KYCSession> MockCheckSession(const std::string& session_id)
+    {
+        auto it = mock_sessions.find(session_id);
+        if (it == mock_sessions.end()) {
+            return util::Error{_("Session not found")};
+        }
+
+        if (it->second.status == "pending" && GetTime() > it->second.created_at + 5) {
+            it->second.status = "completed";
+
+            std::string cred_str = strprintf(
+                "{\"issuer\":\"did:dash:trusted-issuer\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
+                "\"expirationDate\":%lld,\"credentialSubject\":{\"wallet\":\"%s\",\"kycLevel\":\"%d\"}}",
+                GetTime() + 365 * 24 * 60 * 60,
+                "wallet_name",
+                static_cast<int>(it->second.level)
+            );
+            it->second.credential.assign(cred_str.begin(), cred_str.end());
+        }
+
+        return it->second;
+    }
+};
+
 CoinfirmProvider::CoinfirmProvider(const std::string& api_key, const std::string& api_secret)
     : m_impl(std::make_unique<Impl>(api_key, api_secret)) {}
 
@@ -132,6 +175,90 @@ bool CoinfirmProvider::IsIssuerTrusted(const std::string& issuer_did)
 std::vector<KYCLevel> CoinfirmProvider::GetSupportedLevels() const
 {
     return {KYCLevel::BASIC_LEVEL, KYCLevel::ADVANCED_LEVEL, KYCLevel::FULL_LEVEL};
+}
+
+VerifiableCredentialProvider::VerifiableCredentialProvider()
+    : m_impl(std::make_unique<Impl>())
+{
+    AddTrustedIssuer("did:dash:trusted-issuer", "Dash Trusted Issuer", {});
+}
+
+VerifiableCredentialProvider::~VerifiableCredentialProvider() = default;
+
+util::Result<KYCSession> VerifiableCredentialProvider::StartSession(
+    KYCLevel level,
+    const std::string& wallet_name,
+    const std::string& callback_url)
+{
+    LogPrintf("VerifiableCredentialProvider::StartSession - level=%d, wallet=%s, callback=%s\n",
+              static_cast<int>(level), wallet_name, callback_url);
+    return m_impl->MockStartSession(level, wallet_name);
+}
+
+util::Result<KYCSession> VerifiableCredentialProvider::CheckSession(const std::string& session_id)
+{
+    LogPrintf("VerifiableCredentialProvider::CheckSession - session=%s\n", session_id);
+    return m_impl->MockCheckSession(session_id);
+}
+
+util::Result<std::vector<unsigned char>> VerifiableCredentialProvider::GetCredential(const std::string& session_id)
+{
+    auto session_res = CheckSession(session_id);
+    if (!session_res) {
+        return util::Error{util::ErrorString(session_res)};
+    }
+
+    const auto& session = *session_res;
+    if (session.status != "completed") {
+        return util::Error{_("KYC session not completed")};
+    }
+
+    return session.credential;
+}
+
+bool VerifiableCredentialProvider::VerifyCredential(
+    const std::vector<unsigned char>& credential,
+    CCredentialMetadata& metadata)
+{
+    CWalletCredential parsed_credential;
+    if (!parsed_credential.SetCredential(credential)) {
+        return false;
+    }
+
+    metadata = parsed_credential.GetMetadata();
+    if (metadata.credentialHash.IsNull()) {
+        metadata.credentialHash = Hash(credential);
+    }
+
+    return IsIssuerTrusted(metadata.issuer);
+}
+
+bool VerifiableCredentialProvider::IsIssuerTrusted(const std::string& issuer_did)
+{
+    return m_impl->trusted_issuers.count(issuer_did) > 0;
+}
+
+std::vector<KYCLevel> VerifiableCredentialProvider::GetSupportedLevels() const
+{
+    return {
+        KYCLevel::BASIC_LEVEL,
+        KYCLevel::ADVANCED_LEVEL,
+        KYCLevel::FULL_LEVEL,
+        KYCLevel::CORPORATE_LEVEL,
+    };
+}
+
+void VerifiableCredentialProvider::AddTrustedIssuer(
+    const std::string& did,
+    const std::string& name,
+    const std::vector<unsigned char>& public_key)
+{
+    CTrustedIssuer issuer;
+    issuer.issuerId = did;
+    issuer.issuerName = name;
+    issuer.publicKey = public_key;
+    issuer.isTrusted = true;
+    m_impl->trusted_issuers[did] = std::move(issuer);
 }
 
 // Factory implementation
