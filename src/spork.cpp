@@ -269,6 +269,22 @@ SporkValue CSporkManager::GetSporkValue(SporkId nSporkID) const
         }
     }
 
+    if (Params().NetworkIDString() == CBaseChainParams::DEVNET) {
+        switch (nSporkID) {
+            case SPORK_2_INSTANTSEND_ENABLED:
+            case SPORK_3_INSTANTSEND_BLOCK_FILTERING:
+            case SPORK_9_SUPERBLOCKS_ENABLED:
+            case SPORK_17_QUORUM_DKG_ENABLED:
+            case SPORK_19_CHAINLOCKS_ENABLED:
+            case SPORK_23_QUORUM_POSE:
+                return 0;
+            case SPORK_21_QUORUM_ALL_CONNECTED:
+                return 1;
+            default:
+                break;
+        }
+    }
+
     LOCK(cs);
 
     if (auto opt_sporkValue = SporkValueIfActive(nSporkID)) {
