@@ -10,7 +10,6 @@
 #include <util/strencodings.h>
 #include <util/system.h>
 
-#include <support/httplib.h>
 
 #include <chrono>
 #include <thread>
