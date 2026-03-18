@@ -172,6 +172,7 @@ BASE_SCRIPTS = [
     'interface_zmq_dash.py --legacy-wallet',
     'interface_zmq.py',
     'rpc_invalid_address_message.py',
+    'wallet_credential.py',
     'interface_bitcoin_cli.py --legacy-wallet',
     'interface_bitcoin_cli.py --descriptors',
     'feature_bind_extra.py',
