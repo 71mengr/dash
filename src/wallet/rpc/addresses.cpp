@@ -35,7 +35,7 @@ RPCHelpMan getnewaddress()
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
 
-    if (!pwallet->IsVerified()) {
+    if (!pwallet->CanPerformSensitiveOperations()) {
         std::string reason = pwallet->GetVerificationFailureReason();
         if (!reason.empty()) {
             throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot generate new address: %s", reason));
@@ -79,7 +79,7 @@ RPCHelpMan getrawchangeaddress()
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
 
-    if (!pwallet->IsVerified()) {
+    if (!pwallet->CanPerformSensitiveOperations()) {
         std::string reason = pwallet->GetVerificationFailureReason();
         if (!reason.empty()) {
             throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot generate change address: %s", reason));
@@ -303,7 +303,7 @@ RPCHelpMan keypoolrefill()
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: Private keys are disabled for this wallet");
     }
 
-    if (!pwallet->IsVerified()) {
+    if (!pwallet->CanPerformSensitiveOperations()) {
         std::string reason = pwallet->GetVerificationFailureReason();
         if (!reason.empty()) {
             throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Cannot refill keypool: %s", reason));

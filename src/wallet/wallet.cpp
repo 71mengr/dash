@@ -1837,7 +1837,7 @@ bool CWallet::IsHDEnabled() const
 bool CWallet::CanGetAddresses(bool internal) const
 {
     LOCK(cs_wallet);
-    if (!IsVerified()) {
+    if (!CanPerformSensitiveOperations()) {
         return false;
     }
     if (m_spk_managers.empty()) return false;
@@ -2763,8 +2763,8 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
 {
     LOCK(cs_wallet);
 
-    // Check if wallet is verified before topping up keypool
-    if (!IsVerified()) {
+    // Check if wallet policy allows topping up the keypool.
+    if (!CanPerformSensitiveOperations()) {
         std::string reason = m_credential.GetVerificationFailureReason();
         if (!reason.empty()) {
             WalletLogPrintf("Cannot top up keypool: %s\n", reason);
@@ -2783,8 +2783,8 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const std::string label)
 {
     LOCK(cs_wallet);
 
-    // Check if wallet is verified
-    if (!IsVerified()) {
+    // Check if wallet policy allows generating new addresses.
+    if (!CanPerformSensitiveOperations()) {
         std::string reason = m_credential.GetVerificationFailureReason();
         if (!reason.empty()) {
             return util::Error{strprintf(_("Cannot generate new address: %s"), reason)};
@@ -2808,8 +2808,8 @@ util::Result<CTxDestination> CWallet::GetNewChangeDestination()
 {
     LOCK(cs_wallet);
 
-    // Check if wallet is verified
-    if (!IsVerified()) {
+    // Check if wallet policy allows generating change addresses.
+    if (!CanPerformSensitiveOperations()) {
         std::string reason = m_credential.GetVerificationFailureReason();
         if (!reason.empty()) {
             return util::Error{strprintf(_("Cannot generate change address: %s"), reason)};
@@ -2891,8 +2891,8 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::string& purpose) co
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool fInternalIn)
 {
-    // Check if wallet is verified before reserving an address
-    if (!pwallet->IsVerified()) {
+    // Check if wallet policy allows reserving an address.
+    if (!pwallet->CanPerformSensitiveOperations()) {
         std::string reason = pwallet->GetVerificationFailureReason();
         if (!reason.empty()) {
             return util::Error{strprintf(_("Cannot generate address: %s"), reason)};
@@ -4464,13 +4464,21 @@ ScriptPubKeyMan* CWallet::AddWalletDescriptor(WalletDescriptor& desc, const Flat
 std::string CWallet::GetVerificationFailureReason() const
 {
     LOCK(cs_wallet);
+    if (!RequiresVerification()) {
+        return "";
+    }
     return m_credential.GetVerificationFailureReason();
+}
+
+bool CWallet::CanPerformSensitiveOperations() const
+{
+    LOCK(cs_wallet);
+    return !RequiresVerification() || m_credential.CanPerformSensitiveOperations();
 }
 
 bool CWallet::CanGenerateAddresses() const
 {
-    LOCK(cs_wallet);
-    return m_credential.CanPerformSensitiveOperations();
+    return CanPerformSensitiveOperations();
 }
 
 } // namespace wallet

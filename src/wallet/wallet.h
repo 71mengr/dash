@@ -1110,8 +1110,10 @@ public:
     void SetCredential(const CWalletCredential& cred) { m_credential = cred; }
     CWalletCredential GetCredential() const { return m_credential; }
     bool IsVerified() const { return m_credential.IsVerified(); }
+    bool RequiresVerification() const { return IsWalletFlagSet(WALLET_FLAG_REQUIRE_VERIFICATION); }
     CredentialStatus GetVerificationStatus() const { return m_credential.GetStatus(); }
     std::string GetVerificationFailureReason() const;
+    bool CanPerformSensitiveOperations() const;
     bool SetKYCProvider(KYCProviderType type, const std::map<std::string, std::string>& config);
     util::Result<KYCSession> StartKYCVerification(KYCLevel level, const std::string& callback_url);
     util::Result<KYCSession> CheckKYCStatus(const std::string& session_id);

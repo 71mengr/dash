@@ -921,6 +921,9 @@ static RPCHelpMan createwallet()
     }
 
 bool require_verification = !request.params[8].isNull() && request.params[8].get_bool();
+    if (require_verification) {
+        flags |= WALLET_FLAG_REQUIRE_VERIFICATION;
+    }
 #ifndef USE_BDB
     if (!(flags & WALLET_FLAG_DESCRIPTORS)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Compiled without bdb support (required for legacy wallets)");
@@ -938,10 +941,6 @@ bool require_verification = !request.params[8].isNull() && request.params[8].get
     if (!wallet) {
         RPCErrorCode code = status == DatabaseStatus::FAILED_ENCRYPT ? RPC_WALLET_ENCRYPTION_FAILED : RPC_WALLET_ERROR;
         throw JSONRPCError(code, error.original);
-    }
-    if (require_verification) {
-        // TODO: persist an explicit verification-required setting if wallet policy grows one.
-        wallet->WalletLogPrintf("Wallet created with verification requirement\n");
     }
     wallet->SetupLegacyScriptPubKeyMan();
 

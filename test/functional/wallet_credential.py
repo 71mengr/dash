@@ -23,9 +23,11 @@ class WalletCredentialTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
 
     def run_test(self):
-        wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
+        self.log.info("Create a wallet that explicitly requires verification")
+        self.nodes[0].createwallet(wallet_name="verified_only", require_verification=True)
+        wallet = self.nodes[0].get_wallet_rpc("verified_only")
 
-        self.log.info("Check that an unverified wallet cannot generate addresses")
+        self.log.info("Check that an unverified verification-required wallet cannot generate addresses")
         info = wallet.getwalletinfo()["verification"]
         assert_equal(info["status"], "none")
         assert_equal(info["is_verified"], False)
@@ -42,6 +44,7 @@ class WalletCredentialTest(BitcoinTestFramework):
         )
         assert_raises_rpc_error(
             -4,
+<<<<<<< ours
             "Cannot create multisig address: Wallet is not KYC verified",
             wallet.addmultisigaddress,
             1,
@@ -54,13 +57,19 @@ class WalletCredentialTest(BitcoinTestFramework):
             -4,
             "Cannot create new keypool: Wallet is not KYC verified",
             wallet.newkeypool,
+=======
+            "Cannot create transaction: Wallet is not KYC verified",
+            wallet.walletcreatefundedpsbt,
+            [],
+            {self.nodes[0].get_wallet_rpc(self.default_wallet_name).getnewaddress(): 1},
+>>>>>>> theirs
         )
 
         self.log.info("Set a credential and verify address generation works")
         result = wallet.setwalletcredential("basic", "test-suite", 30)
         assert_equal(result["status"], "basic")
         assert_equal(result["is_verified"], True)
-        assert_equal(result["wallet_name"], self.default_wallet_name)
+        assert_equal(result["wallet_name"], "verified_only")
 
         credential = wallet.getwalletcredential()
         assert_equal(credential["status"], "basic")

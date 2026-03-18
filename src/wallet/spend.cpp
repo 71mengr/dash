@@ -780,7 +780,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
 {
     AssertLockHeld(wallet.cs_wallet);
 
-    if (!wallet.IsVerified()) {
+    if (!wallet.CanPerformSensitiveOperations()) {
         std::string reason = wallet.GetVerificationFailureReason();
         if (!reason.empty()) {
             return util::Error{strprintf(_("Cannot create transaction: %s"), reason)};
@@ -1161,7 +1161,7 @@ util::Result<CreatedTransactionResult> CreateTransaction(
 bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl coinControl)
 {
 
-    if (!wallet.IsVerified()) {
+    if (!wallet.CanPerformSensitiveOperations()) {
         std::string reason = wallet.GetVerificationFailureReason();
         if (!reason.empty()) {
             error = strprintf(_("Cannot fund transaction: %s"), reason);
@@ -1248,7 +1248,7 @@ bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet,
 bool GenBudgetSystemCollateralTx(CWallet& wallet, CTransactionRef& tx, uint256 hash, CAmount amount, const COutPoint& outpoint)
 {
 
-    if (!wallet.IsVerified()) {
+    if (!wallet.CanPerformSensitiveOperations()) {
         wallet.WalletLogPrintf("%s -- Wallet not verified: %s\n", __func__, wallet.GetVerificationFailureReason());
         return false;
     }
