@@ -1189,4 +1189,6 @@ bool DummySignInput(const SigningProvider& provider, CTxIn &tx_in, const CTxOut 
 bool FillInputToWeight(CTxIn& txin, int64_t target_weight);
 } // namespace wallet
 
+template<> struct is_serializable_enum<wallet::ChatMessageDirection> : std::true_type {};
+
 #endif // BITCOIN_WALLET_WALLET_H
