@@ -61,12 +61,25 @@ struct WalletBalances;
 struct WalletTx;
 struct WalletTxOut;
 struct WalletTxStatus;
+struct WalletVerification;
 namespace CoinJoin {
 class Loader;
 }
 
 using WalletOrderForm = std::vector<std::pair<std::string, std::string>>;
 using WalletValueMap = std::map<std::string, std::string>;
+
+struct WalletVerification {
+    bool is_verified{false};
+    bool can_generate_addresses{false};
+    bool has_credential{false};
+    std::string status;
+    std::string issuer;
+    std::string credential_type;
+    std::string credential_hash;
+    std::string failure_reason;
+    int64_t expires_at{0};
+};
 
 //! Interface for accessing a wallet.
 class Wallet
@@ -237,6 +250,9 @@ public:
 
     //! Get balances.
     virtual WalletBalances getBalances() = 0;
+
+    //! Get wallet verification and credential state.
+    virtual WalletVerification getVerification() = 0;
 
     //! Get balances if possible without blocking.
     virtual bool tryGetBalances(WalletBalances& balances, uint256& block_hash) = 0;

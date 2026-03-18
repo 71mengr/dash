@@ -64,6 +64,8 @@ private:
 
     void SetupTransactionList(int nNumItems);
     void DisableCoinJoinCompletely();
+    void updateVerificationSection();
+    QString formatVerificationStatus(const interfaces::WalletVerification& verification) const;
 
 private Q_SLOTS:
     void toggleCoinJoin();

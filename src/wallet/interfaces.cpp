@@ -458,6 +458,38 @@ public:
         result.denominated_trusted = bal.m_denominated_trusted;
         return result;
     }
+
+    WalletVerification getVerification() override
+    {
+        LOCK(m_wallet->cs_wallet);
+        WalletVerification result;
+        result.is_verified = m_wallet->IsVerified();
+        result.can_generate_addresses = m_wallet->CanGenerateAddresses();
+        result.failure_reason = m_wallet->GetVerificationFailureReason();
+
+        std::string status;
+        switch (m_wallet->GetVerificationStatus()) {
+        case CredentialStatus::NONE: status = "none"; break;
+        case CredentialStatus::PENDING: status = "pending"; break;
+        case CredentialStatus::VERIFIED_BASIC: status = "basic"; break;
+        case CredentialStatus::VERIFIED_FULL: status = "full"; break;
+        case CredentialStatus::EXPIRED: status = "expired"; break;
+        case CredentialStatus::REVOKED: status = "revoked"; break;
+        default: status = "unknown"; break;
+        }
+        result.status = status;
+
+        const CWalletCredential credential = m_wallet->GetCredential();
+        const CCredentialMetadata metadata = credential.GetMetadata();
+        result.has_credential = !credential.GetCredential().empty();
+        result.issuer = metadata.issuer;
+        result.credential_type = metadata.credentialType;
+        result.expires_at = metadata.nExpiresAt;
+        if (!metadata.credentialHash.IsNull()) {
+            result.credential_hash = metadata.credentialHash.GetHex();
+        }
+        return result;
+    }
     bool tryGetBalances(WalletBalances& balances, uint256& block_hash) override
     {
         TRY_LOCK(m_wallet->cs_wallet, locked_wallet);

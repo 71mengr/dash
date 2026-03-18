@@ -27,6 +27,7 @@
 
 #include <QAbstractItemDelegate>
 #include <QApplication>
+#include <QDateTime>
 #include <QMessageBox>
 #include <QPainter>
 #include <QSettings>
@@ -152,7 +153,8 @@ OverviewPage::OverviewPage(QWidget* parent) :
                       ui->labelCoinJoinHeader
                      }, {GUIUtil::FontWeight::Bold, 16});
 
-    GUIUtil::setFont({ui->labelTotalText}, {GUIUtil::FontWeight::Bold, 14});
+    GUIUtil::setFont({ui->labelTotalText,
+                      ui->labelCredentialHeader}, {GUIUtil::FontWeight::Bold, 14});
 
     GUIUtil::setFont({ui->labelBalanceText,
                       ui->labelPendingText,
@@ -187,6 +189,7 @@ OverviewPage::OverviewPage(QWidget* parent) :
 
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
+    updateVerificationSection();
 
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, [this]{ coinJoinStatus(); });
@@ -316,6 +319,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         interfaces::WalletBalances balances = wallet.getBalances();
         setBalance(balances);
         connect(model, &WalletModel::balanceChanged, this, &OverviewPage::setBalance);
+        connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::updateVerificationSection);
 
         updateWatchOnlyLabels((wallet.haveWatchOnly() && !model->wallet().privateKeysDisabled()) || gArgs.GetBoolArg("-debug-ui", false));
         connect(model, &WalletModel::notifyWatchonlyChanged, [this](bool showWatchOnly) {
@@ -343,6 +347,8 @@ void OverviewPage::setWalletModel(WalletModel *model)
 
         // coinjoin buttons will not react to spacebar must be clicked on
         ui->toggleCoinJoin->setFocusPolicy(Qt::NoFocus);
+
+        updateVerificationSection();
     }
 }
 
@@ -366,6 +372,46 @@ void OverviewPage::updateAlerts(const QString &warnings)
 {
     this->ui->labelAlerts->setVisible(!warnings.isEmpty());
     this->ui->labelAlerts->setText(warnings);
+}
+
+QString OverviewPage::formatVerificationStatus(const interfaces::WalletVerification& verification) const
+{
+    if (verification.status == "basic") return tr("Basic verified");
+    if (verification.status == "full") return tr("Full verified");
+    if (verification.status == "pending") return tr("Pending");
+    if (verification.status == "expired") return tr("Expired");
+    if (verification.status == "revoked") return tr("Revoked");
+    return tr("Not verified");
+}
+
+void OverviewPage::updateVerificationSection()
+{
+    const bool has_wallet = walletModel != nullptr;
+    ui->frameCredential->setVisible(has_wallet);
+    if (!has_wallet) {
+        return;
+    }
+
+    const interfaces::WalletVerification verification = walletModel->wallet().getVerification();
+    ui->labelCredentialStatusValue->setText(formatVerificationStatus(verification));
+    ui->labelCredentialProviderValue->setText(verification.issuer.empty() ? tr("Not available") : QString::fromStdString(verification.issuer));
+    ui->labelCredentialTypeValue->setText(verification.credential_type.empty() ? tr("Not available") : QString::fromStdString(verification.credential_type));
+    ui->labelCredentialAddressesValue->setText(verification.can_generate_addresses ? tr("Allowed") : tr("Blocked"));
+
+    const QString hash = verification.credential_hash.empty() ? tr("Not available") : QString::fromStdString(verification.credential_hash);
+    ui->labelCredentialHashValue->setText(hash);
+    ui->labelCredentialHashValue->setToolTip(hash);
+
+    QString expires_at{tr("Not available")};
+    if (verification.expires_at > 0) {
+        expires_at = QDateTime::fromSecsSinceEpoch(verification.expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate);
+    }
+    ui->labelCredentialExpiresValue->setText(expires_at);
+
+    const QString details = verification.is_verified
+        ? tr("Wallet verification is active.")
+        : QString::fromStdString(verification.failure_reason.empty() ? std::string{"Wallet verification has not completed yet."} : verification.failure_reason);
+    ui->labelCredentialDetailsValue->setText(details);
 }
 
 void OverviewPage::showOutOfSyncWarning(bool fShow)
