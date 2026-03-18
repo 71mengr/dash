@@ -10,7 +10,6 @@
 #include <util/strencodings.h>
 #include <util/system.h>
 
-#include <json/json_spirit_writer_template.h>
 #include <support/httplib.h>
 
 #include <chrono>
