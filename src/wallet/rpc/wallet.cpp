@@ -42,6 +42,25 @@ bool HaveKey(const SigningProvider& wallet, const CKey& key)
     return wallet.HaveKey(key.GetPubKey().GetID()) || wallet.HaveKey(key2.GetPubKey().GetID());
 }
 
+static bool IsCredentialTestingChain()
+{
+    return Params().IsMockableChain();
+}
+
+static void EnsureCredentialTestingChain(const std::string& rpc_name)
+{
+    if (!IsCredentialTestingChain()) {
+        throw JSONRPCError(RPC_MISC_ERROR, strprintf(
+            "%s is only available on mockable test chains. Use importcredential with a real credential in production.",
+            rpc_name));
+    }
+}
+
+static bool IsTrustedCredentialIssuer(const std::string& issuer)
+{
+    return issuer == "coinfirm" || issuer == "did:dash:trusted-issuer" || issuer.rfind("did:coinfirm:", 0) == 0;
+}
+
 static RPCHelpMan listaddressbalances()
 {
     return RPCHelpMan{"listaddressbalances",
@@ -110,6 +129,7 @@ static RPCHelpMan setkycprovider()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("setkycprovider");
 
     std::string provider_str = request.params[0].get_str();
     KYCProviderType type;
@@ -165,6 +185,7 @@ static RPCHelpMan startkyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("startkyc");
 
     std::string level_str = request.params[0].get_str();
     KYCLevel level;
@@ -222,6 +243,7 @@ static RPCHelpMan checkkyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("checkkyc");
 
     std::string session_id = request.params[0].get_str();
     
@@ -264,6 +286,7 @@ static RPCHelpMan completekyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("completekyc");
 
     std::string session_id = request.params[0].get_str();
     
@@ -1226,8 +1249,8 @@ static RPCHelpMan upgradewallet()
 static RPCHelpMan setwalletcredential()
 {
     return RPCHelpMan{"setwalletcredential",
-        "\nSets a test credential for development (DO NOT USE IN PRODUCTION).\n"
-        "\nThis is a temporary RPC for Phase 1 testing of the credential system.\n",
+        "\nSets a test credential for development.\n"
+        "\nThis RPC is only available on mockable test chains and must not be used in production.\n",
         {
             {"status", RPCArg::Type::STR, RPCArg::Optional::NO, "Verification status (basic, full, none)"},
             {"issuer", RPCArg::Type::STR, RPCArg::Default{"test-issuer"}, "Issuer name"},
@@ -1250,6 +1273,7 @@ static RPCHelpMan setwalletcredential()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("setwalletcredential");
 
     // Parse status
     std::string statusStr = request.params[0].get_str();
@@ -1419,21 +1443,53 @@ static RPCHelpMan importcredential()
 
     std::string credential_str = request.params[0].get_str();
     std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+    const std::optional<std::string> requested_issuer{
+        request.params[1].isNull() ? std::nullopt : std::make_optional(request.params[1].get_str())};
 
-    // Parse the credential (TODO: This would verify signatures)
-    // For Phase 2, we'll do basic parsing
     CWalletCredential cred;
     if (!cred.SetCredential(credential_data)) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid credential format");
     }
 
-    // TODO: We would:
-    // 1. Verify the credential signature against trusted issuers
-    // 2. Check that the credential is for this wallet
-    // 3. Validate expiration, etc.
+    CCredentialMetadata metadata = cred.GetMetadata();
+    if (requested_issuer.has_value()) {
+        if (!metadata.issuer.empty() && metadata.issuer != *requested_issuer) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Issuer does not match credential contents");
+        }
+        if (metadata.issuer.empty()) {
+            metadata.issuer = *requested_issuer;
+        }
+    }
 
-    // For now, we'll trust the input
-    cred.SetStatus(CredentialStatus::VERIFIED_FULL);
+    if (metadata.issuer.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential issuer is required");
+    }
+    if (!IsTrustedCredentialIssuer(metadata.issuer)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential issuer is not trusted");
+    }
+
+    if (metadata.credentialHash.IsNull()) {
+        metadata.credentialHash = Hash(credential_data);
+    }
+
+    if (metadata.nExpiresAt > 0 && metadata.nExpiresAt <= GetTime()) {
+        cred.SetStatus(CredentialStatus::EXPIRED);
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential has expired");
+    }
+
+    const auto wallet_attr = cred.m_attributes.find("wallet");
+    if (wallet_attr != cred.m_attributes.end() && wallet_attr->second != pwallet->GetName()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential does not belong to this wallet");
+    }
+    const auto subject_attr = cred.m_attributes.find("subject");
+    if (subject_attr != cred.m_attributes.end() && subject_attr->second != pwallet->GetName()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential subject does not match this wallet");
+    }
+
+    if (!cred.IsVerified()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential is not in a verified state");
+    }
+    cred.SetMetadata(metadata);
 
     // Save to database
     {
@@ -1442,11 +1498,14 @@ static RPCHelpMan importcredential()
         if (!batch.WriteCredential(cred)) {
             throw JSONRPCError(RPC_WALLET_ERROR, "Failed to write credential to database");
         }
+        if (!batch.WriteCredentialMetadata(metadata) || !batch.WriteCredentialStatus(cred.GetStatus())) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to persist credential metadata");
+        }
         pwallet->SetCredential(cred);
     }
 
     UniValue result(UniValue::VOBJ);
-    result.pushKV("status", "Credential imported successfully");
+    result.pushKV("status", CredentialStatusToString(cred.GetStatus()));
     result.pushKV("is_verified", cred.IsVerified());
 
     return result;

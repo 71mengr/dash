@@ -44,7 +44,6 @@ class WalletCredentialTest(BitcoinTestFramework):
         )
         assert_raises_rpc_error(
             -4,
-<<<<<<< ours
             "Cannot create multisig address: Wallet is not KYC verified",
             wallet.addmultisigaddress,
             1,
@@ -57,12 +56,13 @@ class WalletCredentialTest(BitcoinTestFramework):
             -4,
             "Cannot create new keypool: Wallet is not KYC verified",
             wallet.newkeypool,
-=======
+        )
+        assert_raises_rpc_error(
+            -4,
             "Cannot create transaction: Wallet is not KYC verified",
             wallet.walletcreatefundedpsbt,
             [],
             {self.nodes[0].get_wallet_rpc(self.default_wallet_name).getnewaddress(): 1},
->>>>>>> theirs
         )
 
         self.log.info("Set a credential and verify address generation works")

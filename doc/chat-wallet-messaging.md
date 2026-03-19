@@ -19,3 +19,7 @@ The wallet RPC now exposes a `chat` command for storing wallet-scoped chat histo
 
 - This change provides secure wallet-local persistence and backup/sync serialization, but it does not yet broadcast messages over the Dash network.
 - End-to-end transport encryption with a remote counterparty address is not implemented in this patch; current encryption covers wallet storage at rest.
+
+## Design note
+
+For a longer-term dedicated ChatDB design inside Dash Core, see [doc/design/chatdb.md](design/chatdb.md).
