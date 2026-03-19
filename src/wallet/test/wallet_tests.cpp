@@ -222,6 +222,40 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(kyc_provider_uses_imported_credentials_instead_of_mock_completion, WalletTestingSetup)
+{
+    WalletContext context;
+    context.args = &m_args;
+    context.chain = m_node.chain.get();
+    context.coinjoin_loader = m_node.coinjoin_loader.get();
+    auto wallet = TestLoadWallet(context);
+    BOOST_REQUIRE(wallet);
+
+    std::map<std::string, std::string> config{
+        {"api_key", "test-api-key"},
+        {"api_secret", "test-api-secret"},
+    };
+    BOOST_CHECK(wallet->SetKYCProvider(KYCProviderType::COINFIRM, config));
+
+    auto session_res = wallet->StartKYCVerification(KYCLevel::FULL_LEVEL, "https://callback.example/kyc");
+    BOOST_REQUIRE(session_res);
+    BOOST_CHECK_EQUAL(session_res->status, "pending");
+    BOOST_CHECK(session_res->url.find("verify.coinfirm.com") != std::string::npos);
+
+    const std::string credential_json =
+        "{\"issuer\":\"coinfirm\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
+        "\"expirationDate\":\"2035-01-01T00:00:00Z\","
+        "\"credentialSubject\":{\"wallet\":\"test-wallet\",\"kycLevel\":\"3\"}}";
+    std::vector<unsigned char> credential_data(credential_json.begin(), credential_json.end());
+
+    BOOST_CHECK(wallet->ImportKYCCredential(session_res->session_id, credential_data));
+    BOOST_CHECK(wallet->IsVerified());
+    BOOST_CHECK_EQUAL(wallet->GetCredential().GetMetadata().issuer, "coinfirm");
+    BOOST_CHECK(wallet->CompleteKYCVerification(session_res->session_id));
+
+    TestUnloadWallet(context, std::move(wallet));
+}
+
 BOOST_FIXTURE_TEST_CASE(importmulti_rescan, TestChain100Setup)
 {
     // Cap last block file size, and mine new block in a new block file.

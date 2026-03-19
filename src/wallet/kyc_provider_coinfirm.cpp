@@ -4,110 +4,172 @@
 
 #include <wallet/kyc_provider.h>
 
-#include <httpserver.h>
 #include <logging.h>
 #include <random.h>
 #include <util/strencodings.h>
 #include <util/system.h>
 
-
-#include <chrono>
-#include <thread>
+#include <iomanip>
+#include <optional>
+#include <sstream>
 
 namespace wallet {
+namespace {
+
+static std::string UrlEncode(const std::string& value)
+{
+    std::ostringstream encoded;
+    encoded << std::hex << std::uppercase;
+
+    for (const unsigned char ch : value) {
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
+            ch == '.' || ch == '~') {
+            encoded << static_cast<char>(ch);
+        } else {
+            encoded << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+        }
+    }
+
+    return encoded.str();
+}
+
+static std::string KYCLevelToProviderString(KYCLevel level)
+{
+    switch (level) {
+        case KYCLevel::BASIC_LEVEL:
+            return "basic";
+        case KYCLevel::ADVANCED_LEVEL:
+            return "advanced";
+        case KYCLevel::FULL_LEVEL:
+            return "full";
+        case KYCLevel::CORPORATE_LEVEL:
+            return "corporate";
+        case KYCLevel::NONE:
+            break;
+    }
+    return "none";
+}
+
+} // namespace
 
 struct CoinfirmProvider::Impl {
     std::string api_key;
     std::string api_secret;
-    std::string base_url{"https://api.coinfirm.com"};
-    
-    // TODO: use proper HTTP client
-    std::map<std::string, KYCSession> mock_sessions;
-    
-    Impl(const std::string& key, const std::string& secret) 
+    std::string base_url{"https://verify.coinfirm.com"};
+    std::string issuer_id{"coinfirm"};
+    std::string issuer_name{"Coinfirm"};
+    std::optional<CTrustedIssuer> trusted_issuer;
+    std::map<std::string, KYCSession> sessions;
+
+    Impl(const std::string& key, const std::string& secret)
         : api_key(key), api_secret(secret) {}
-    
-    // Mock implementation for testing
-    // TODO: replace with actual Coinfirm API calls
-    util::Result<KYCSession> MockStartSession(KYCLevel level, const std::string& wallet_name) {
+
+    std::string BuildVerificationUrl(
+        const std::string& session_id,
+        KYCLevel level,
+        const std::string& wallet_name,
+        const std::string& callback_url) const
+    {
+        std::vector<std::pair<std::string, std::string>> params{
+            {"session_id", session_id},
+            {"level", KYCLevelToProviderString(level)},
+            {"wallet", wallet_name},
+        };
+
+        if (!callback_url.empty()) {
+            params.emplace_back("callback_url", callback_url);
+        }
+
+        if (!api_key.empty()) {
+            params.emplace_back("api_key", api_key);
+        }
+
+        std::string url = base_url;
+        if (url.find('?') == std::string::npos) {
+            url += '?';
+        } else if (!url.empty() && url.back() != '&' && url.back() != '?') {
+            url += '&';
+        }
+
+        bool first = true;
+        for (const auto& [key, value] : params) {
+            if (!first) {
+                url += '&';
+            }
+            first = false;
+            url += UrlEncode(key);
+            url += '=';
+            url += UrlEncode(value);
+        }
+
+        return url;
+    }
+
+    util::Result<KYCSession> StartSession(
+        KYCLevel level,
+        const std::string& wallet_name,
+        const std::string& callback_url)
+    {
         KYCSession session;
         session.session_id = "coinfirm_" + GetRandHash().ToString().substr(0, 16);
         session.provider = KYCProviderType::COINFIRM;
         session.level = level;
-        session.url = "https://verify.coinfirm.com/" + session.session_id;
+        session.url = BuildVerificationUrl(session.session_id, level, wallet_name, callback_url);
         session.created_at = GetTime();
-        session.expires_at = session.created_at + 24 * 60 * 60; // 24 hours
+        session.expires_at = session.created_at + 24 * 60 * 60;
         session.status = "pending";
-        
-        mock_sessions[session.session_id] = session;
-        
+
+        sessions[session.session_id] = session;
         return session;
     }
-    
-    util::Result<KYCSession> MockCheckSession(const std::string& session_id) {
-        auto it = mock_sessions.find(session_id);
-        if (it == mock_sessions.end()) {
+
+    util::Result<KYCSession> CheckSession(const std::string& session_id) const
+    {
+        const auto it = sessions.find(session_id);
+        if (it == sessions.end()) {
             return util::Error{_("Session not found")};
         }
-        
-        // Simulate completion after some time
-        if (it->second.status == "pending" && GetTime() > it->second.created_at + 30) {
-            it->second.status = "completed";
-            
-            // Generate mock credential
-            std::string cred_str = strprintf(
-                "{\"issuer\":\"coinfirm\",\"level\":\"%d\",\"expiry\":%lld,\"wallet\":\"%s\"}",
-                static_cast<int>(it->second.level),
-                GetTime() + 365 * 24 * 60 * 60, // 1 year
-                "wallet_name"
-            );
-            it->second.credential.assign(cred_str.begin(), cred_str.end());
+
+        KYCSession session = it->second;
+        if (session.status == "pending" && session.expires_at > 0 && GetTime() > session.expires_at) {
+            session.status = "expired";
         }
-        
-        return it->second;
+        return session;
     }
 };
 
 struct VerifiableCredentialProvider::Impl {
-    std::map<std::string, KYCSession> mock_sessions;
+    std::map<std::string, KYCSession> sessions;
     std::map<std::string, CTrustedIssuer> trusted_issuers;
 
-    util::Result<KYCSession> MockStartSession(KYCLevel level, const std::string& wallet_name)
+    util::Result<KYCSession> StartSession(KYCLevel level, const std::string& wallet_name)
     {
         KYCSession session;
         session.session_id = "vc_" + GetRandHash().ToString().substr(0, 16);
         session.provider = KYCProviderType::CUSTOM_VC;
         session.level = level;
-        session.url = "vc://credential-request/" + session.session_id + "?wallet=" + wallet_name;
+        session.url = "vc://credential-request/" + session.session_id + "?wallet=" + UrlEncode(wallet_name) + "&level=" + KYCLevelToProviderString(level);
         session.created_at = GetTime();
         session.expires_at = session.created_at + 24 * 60 * 60;
         session.status = "pending";
 
-        mock_sessions[session.session_id] = session;
+        sessions[session.session_id] = session;
         return session;
     }
 
-    util::Result<KYCSession> MockCheckSession(const std::string& session_id)
+    util::Result<KYCSession> CheckSession(const std::string& session_id) const
     {
-        auto it = mock_sessions.find(session_id);
-        if (it == mock_sessions.end()) {
+        const auto it = sessions.find(session_id);
+        if (it == sessions.end()) {
             return util::Error{_("Session not found")};
         }
 
-        if (it->second.status == "pending" && GetTime() > it->second.created_at + 5) {
-            it->second.status = "completed";
-
-            std::string cred_str = strprintf(
-                "{\"issuer\":\"did:dash:trusted-issuer\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
-                "\"expirationDate\":%lld,\"credentialSubject\":{\"wallet\":\"%s\",\"kycLevel\":\"%d\"}}",
-                GetTime() + 365 * 24 * 60 * 60,
-                "wallet_name",
-                static_cast<int>(it->second.level)
-            );
-            it->second.credential.assign(cred_str.begin(), cred_str.end());
+        KYCSession session = it->second;
+        if (session.status == "pending" && session.expires_at > 0 && GetTime() > session.expires_at) {
+            session.status = "expired";
         }
-
-        return it->second;
+        return session;
     }
 };
 
@@ -116,21 +178,20 @@ CoinfirmProvider::CoinfirmProvider(const std::string& api_key, const std::string
 
 CoinfirmProvider::~CoinfirmProvider() = default;
 
-util::Result<KYCSession> CoinfirmProvider::StartSession(KYCLevel level, 
+util::Result<KYCSession> CoinfirmProvider::StartSession(KYCLevel level,
                                                          const std::string& wallet_name,
                                                          const std::string& callback_url)
 {
-    LogPrintf("CoinfirmProvider::StartSession - level=%d, wallet=%s\n", 
+    LogPrintf("CoinfirmProvider::StartSession - level=%d, wallet=%s\n",
               static_cast<int>(level), wallet_name);
-    
-    // TODO: call actual Coinfirm API
-    return m_impl->MockStartSession(level, wallet_name);
+
+    return m_impl->StartSession(level, wallet_name, callback_url);
 }
 
 util::Result<KYCSession> CoinfirmProvider::CheckSession(const std::string& session_id)
 {
     LogPrintf("CoinfirmProvider::CheckSession - session=%s\n", session_id);
-    return m_impl->MockCheckSession(session_id);
+    return m_impl->CheckSession(session_id);
 }
 
 util::Result<std::vector<unsigned char>> CoinfirmProvider::GetCredential(const std::string& session_id)
@@ -139,37 +200,50 @@ util::Result<std::vector<unsigned char>> CoinfirmProvider::GetCredential(const s
     if (!session_res) {
         return util::Error{util::ErrorString(session_res)};
     }
-    
+
     const auto& session = *session_res;
-    if (session.status != "completed") {
-        return util::Error{_("KYC session not completed")};
+    if (session.status != "completed" || session.credential.empty()) {
+        return util::Error{_("Credential not available for session")};
     }
-    
+
     return session.credential;
 }
 
-bool CoinfirmProvider::VerifyCredential(const std::vector<unsigned char>& credential, 
+bool CoinfirmProvider::VerifyCredential(const std::vector<unsigned char>& credential,
                                          CCredentialMetadata& metadata)
 {
-    // TODO: verify Coinfirm's signature
-    // For now, parse JSON and extract metadata
-    
-    std::string cred_str(credential.begin(), credential.end());
-    LogPrintf("Verifying Coinfirm credential: %s\n", cred_str);
-    
-    // Mock verification
-    metadata.issuer = "coinfirm";
-    metadata.nExpiresAt = GetTime() + 365 * 24 * 60 * 60;
-    metadata.credentialType = "full_kyc";
-    metadata.credentialHash = Hash(credential);
-    
+    CWalletCredential parsed_credential;
+    if (!parsed_credential.SetCredential(credential)) {
+        LogPrintf("CoinfirmProvider::VerifyCredential: credential parsing failed\n");
+        return false;
+    }
+
+    metadata = parsed_credential.GetMetadata();
+    if (metadata.credentialHash.IsNull()) {
+        metadata.credentialHash = Hash(credential);
+    }
+
+    if (metadata.issuer.empty()) {
+        LogPrintf("CoinfirmProvider::VerifyCredential: issuer missing\n");
+        return false;
+    }
+
+    if (!IsIssuerTrusted(metadata.issuer)) {
+        LogPrintf("CoinfirmProvider::VerifyCredential: untrusted issuer %s\n", metadata.issuer);
+        return false;
+    }
+
+    if (metadata.nExpiresAt > 0 && GetTime() > metadata.nExpiresAt) {
+        LogPrintf("CoinfirmProvider::VerifyCredential: credential expired at %lld\n", metadata.nExpiresAt);
+        return false;
+    }
+
     return true;
 }
 
 bool CoinfirmProvider::IsIssuerTrusted(const std::string& issuer_did)
 {
-    // Coinfirm is trusted by default
-    return issuer_did == "coinfirm" || issuer_did.find("did:coinfirm:") == 0;
+    return issuer_did == m_impl->issuer_id || issuer_did == "coinfirm" || issuer_did.find("did:coinfirm:") == 0;
 }
 
 std::vector<KYCLevel> CoinfirmProvider::GetSupportedLevels() const
@@ -192,13 +266,13 @@ util::Result<KYCSession> VerifiableCredentialProvider::StartSession(
 {
     LogPrintf("VerifiableCredentialProvider::StartSession - level=%d, wallet=%s, callback=%s\n",
               static_cast<int>(level), wallet_name, callback_url);
-    return m_impl->MockStartSession(level, wallet_name);
+    return m_impl->StartSession(level, wallet_name);
 }
 
 util::Result<KYCSession> VerifiableCredentialProvider::CheckSession(const std::string& session_id)
 {
     LogPrintf("VerifiableCredentialProvider::CheckSession - session=%s\n", session_id);
-    return m_impl->MockCheckSession(session_id);
+    return m_impl->CheckSession(session_id);
 }
 
 util::Result<std::vector<unsigned char>> VerifiableCredentialProvider::GetCredential(const std::string& session_id)
@@ -209,8 +283,8 @@ util::Result<std::vector<unsigned char>> VerifiableCredentialProvider::GetCreden
     }
 
     const auto& session = *session_res;
-    if (session.status != "completed") {
-        return util::Error{_("KYC session not completed")};
+    if (session.status != "completed" || session.credential.empty()) {
+        return util::Error{_("Credential not available for session")};
     }
 
     return session.credential;
@@ -228,6 +302,10 @@ bool VerifiableCredentialProvider::VerifyCredential(
     metadata = parsed_credential.GetMetadata();
     if (metadata.credentialHash.IsNull()) {
         metadata.credentialHash = Hash(credential);
+    }
+
+    if (metadata.nExpiresAt > 0 && GetTime() > metadata.nExpiresAt) {
+        return false;
     }
 
     return IsIssuerTrusted(metadata.issuer);
@@ -263,7 +341,7 @@ void VerifiableCredentialProvider::AddTrustedIssuer(
 
 // Factory implementation
 std::unique_ptr<KYCProvider> KYCProviderFactory::CreateProvider(
-    KYCProviderType type, 
+    KYCProviderType type,
     const std::map<std::string, std::string>& config)
 {
     switch (type) {

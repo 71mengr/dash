@@ -301,6 +301,44 @@ static RPCHelpMan completekyc()
     };
 }
 
+static RPCHelpMan importkyccredential()
+{
+    return RPCHelpMan{"importkyccredential",
+        "\nImport a provider-issued verifiable credential into the wallet and mark the session complete.\n",
+        {
+            {"credential", RPCArg::Type::STR, RPCArg::Optional::NO, "Raw JWT or VC JSON credential issued by the configured KYC provider"},
+            {"session_id", RPCArg::Type::STR, RPCArg::Default{""}, "Optional KYC session ID to attach the credential to"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "success", "Whether the credential was accepted"},
+                {RPCResult::Type::BOOL, "wallet_verified", "Whether the wallet is now verified"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("importkyccredential", "\"<jwt-or-vc-json>\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("importkyccredential");
+
+    const std::string credential_str = request.params[0].get_str();
+    const std::string session_id = request.params[1].isNull() ? "" : request.params[1].get_str();
+
+    std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+    const bool success = pwallet->ImportKYCCredential(session_id, credential_data);
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("success", success);
+    result.pushKV("wallet_verified", pwallet->IsVerified());
+    return result;
+},
+    };
+}
+
 static RPCHelpMan setcoinjoinrounds()
 {
     return RPCHelpMan{"setcoinjoinrounds",
@@ -1886,6 +1924,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
          {"wallet", &setkycprovider},
          {"wallet", &startkyc},
          {"wallet", &completekyc},
+         {"wallet", &importkyccredential},
         {"wallet", &checkkyc},
     };
     return commands;
