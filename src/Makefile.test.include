@@ -203,6 +203,7 @@ BITCOIN_TESTS =\
   test/validation_flush_tests.cpp \
   test/validationinterface_tests.cpp \
   test/versionbits_tests.cpp \
+  test/zero_knowledge_tests.cpp \
   test/xoroshiro128plusplus_tests.cpp
 
 if ENABLE_WALLET

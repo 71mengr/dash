@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstring>
 #include <sstream>
+#include <type_traits>
 
 namespace zkproof {
 
@@ -24,6 +25,26 @@ namespace zkproof {
 //=============================================================================
 
 namespace {
+
+template <typename T>
+void AppendPod(std::vector<unsigned char>& data, const T& value)
+{
+    static_assert(std::is_trivially_copyable_v<T>);
+    const auto* begin = reinterpret_cast<const unsigned char*>(&value);
+    data.insert(data.end(), begin, begin + sizeof(T));
+}
+
+template <typename T>
+bool ReadPod(const std::vector<unsigned char>& data, size_t& pos, T& value)
+{
+    static_assert(std::is_trivially_copyable_v<T>);
+    if (data.size() < pos + sizeof(T)) {
+        return false;
+    }
+    memcpy(&value, data.data() + pos, sizeof(T));
+    pos += sizeof(T);
+    return true;
+}
 
 uint256 BuildCommitmentHash(const std::string& claim, const uint256& nonce, const std::string& witness)
 {
@@ -150,7 +171,7 @@ bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, ui
     if (type_byte != static_cast<uint8_t>(ProofType::RANGE_PROOF)) {
         return false;
     }
-    
+
     // Extract nonce and hash
     uint256 nonce;
     uint256 range_hash;
@@ -160,10 +181,11 @@ bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, ui
     pos += range_hash.size();
     
     // Extract stored min/max
-    uint64_t stored_min, stored_max;
-    memcpy(&stored_min, data.data() + pos, sizeof(stored_min));
-    pos += sizeof(stored_min);
-    memcpy(&stored_max, data.data() + pos, sizeof(stored_max));
+    uint64_t stored_min;
+    uint64_t stored_max;
+    if (!ReadPod(data, pos, stored_min) || !ReadPod(data, pos, stored_max)) {
+        return false;
+    }
     
     // Verify the range matches
     if (stored_min != min || stored_max != max) {
@@ -212,6 +234,9 @@ bool RangeProof::Create(uint64_t value, uint64_t min, uint64_t max)
 
 bool RangeProof::Verify(uint64_t min, uint64_t max) const
 {
+    if (m_proof.challenge_hash != BuildChallengeHash(std::string(m_proof.proof_data.begin(), m_proof.proof_data.end()))) {
+        return false;
+    }
     return VerifyRangeProofData(m_proof.proof_data, min, max);
 }
 
@@ -285,8 +310,7 @@ std::vector<unsigned char> SetMembershipProof::GenerateSetProofData(
     
     // Store set size for verification
     uint32_t set_size = set.size();
-    data.insert(data.end(), reinterpret_cast<unsigned char*>(&set_size),
-                reinterpret_cast<unsigned char*>(&set_size) + sizeof(set_size));
+    AppendPod(data, set_size);
     
     return data;
 }
@@ -321,7 +345,9 @@ bool SetMembershipProof::VerifySetProofData(const std::vector<unsigned char>& da
     
     // Extract set size
     uint32_t stored_set_size;
-    memcpy(&stored_set_size, data.data() + pos, sizeof(stored_set_size));
+    if (!ReadPod(data, pos, stored_set_size)) {
+        return false;
+    }
     
     // Verify set size matches
     if (stored_set_size != set.size()) {
@@ -380,6 +406,9 @@ bool SetMembershipProof::Create(const std::string& value, const std::vector<std:
 
 bool SetMembershipProof::Verify(const std::vector<std::string>& set) const
 {
+    if (m_proof.challenge_hash != BuildChallengeHash(std::string(m_proof.proof_data.begin(), m_proof.proof_data.end()))) {
+        return false;
+    }
     return VerifySetProofData(m_proof.proof_data, set);
 }
 
@@ -445,7 +474,10 @@ bool EqualityProof::Verify(const std::vector<unsigned char>& commitment1,
                            const std::vector<unsigned char>& commitment2) const
 {
     const auto& data = m_proof.proof_data;
-    if (data.size() < 1 + 1 + 32 + 32) {
+    if (m_proof.challenge_hash != BuildChallengeHash(std::string(data.begin(), data.end()))) {
+        return false;
+    }
+    if (data.size() < 1 + 1 + 32 + 32 + commitment1.size() + commitment2.size()) {
         return false;
     }
     
@@ -474,9 +506,12 @@ bool EqualityProof::Verify(const std::vector<unsigned char>& commitment1,
         return false;
     }
     
-    // In production, verify the equality proof cryptographically
-    // For now, we trust the structure
-    
+    // In production, verify the equality proof cryptographically.
+    // At minimum, ensure the proof binds to the supplied commitments.
+    if (equality_hash.IsNull()) {
+        return false;
+    }
+
     return true;
 }
 
@@ -513,16 +548,14 @@ bool CompositeProof::Create()
     
     // Store number of proofs
     uint32_t count = m_proofs.size();
-    proof_data.insert(proof_data.end(), reinterpret_cast<unsigned char*>(&count),
-                      reinterpret_cast<unsigned char*>(&count) + sizeof(count));
+    AppendPod(proof_data, count);
     
     // Store each proof
     for (const auto& p : m_proofs) {
         std::vector<unsigned char> serialized;
         CVectorWriter{SER_NETWORK, 0, serialized, 0, p};
         uint32_t size = serialized.size();
-        proof_data.insert(proof_data.end(), reinterpret_cast<unsigned char*>(&size),
-                          reinterpret_cast<unsigned char*>(&size) + sizeof(size));
+        AppendPod(proof_data, size);
         proof_data.insert(proof_data.end(), serialized.begin(), serialized.end());
     }
     
@@ -537,6 +570,9 @@ bool CompositeProof::Create()
 
 bool CompositeProof::Verify() const
 {
+    if (m_proof.challenge_hash != BuildChallengeHash(std::string(m_proof.proof_data.begin(), m_proof.proof_data.end()))) {
+        return false;
+    }
     // Verify each sub-proof
     for (const auto& p : m_proofs) {
         switch (p.type) {
@@ -588,15 +624,14 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
         return false;
     }
     
+    m_proofs.clear();
+
     uint32_t count;
-    memcpy(&count, data.data() + pos, sizeof(count));
-    pos += sizeof(count);
+    if (!ReadPod(data, pos, count)) return false;
     
     for (uint32_t i = 0; i < count; i++) {
-        if (data.size() < pos + 4) return false;
         uint32_t size;
-        memcpy(&size, data.data() + pos, sizeof(size));
-        pos += sizeof(size);
+        if (!ReadPod(data, pos, size)) return false;
         
         if (data.size() < pos + size) return false;
         
@@ -604,7 +639,7 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
         pos += size;
     }
     
-    return true;
+    return pos == data.size();
 }
 
 //=============================================================================
