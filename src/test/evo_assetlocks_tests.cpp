@@ -8,6 +8,7 @@
 #include <consensus/tx_check.h>
 #include <consensus/validation.h>
 #include <evo/assetlocktx.h>
+#include <evo/creditpool.h>
 #include <evo/specialtx.h>
 #include <llmq/context.h>
 #include <policy/settings.h>
@@ -404,6 +405,49 @@ BOOST_FIXTURE_TEST_CASE(evo_assetunlock, TestChain100Setup)
         BOOST_CHECK(tx_state.GetRejectReason() == "bad-assetunlocktx-too-many-outs");
     }
 
+}
+
+BOOST_FIXTURE_TEST_CASE(evo_assetunlock_amount_accounting, TestChain100Setup)
+{
+    LOCK(cs_main);
+    FillableSigningProvider keystore;
+
+    CKey key;
+    key.MakeNewKey(true);
+
+    CMutableTransaction tx{CreateAssetUnlockTx(keystore, key)};
+
+    TxValidationState tx_state;
+    CAmount to_unlock{0};
+    uint64_t index{0};
+    BOOST_CHECK(GetAssetUnlockAmount(CTransaction(tx), to_unlock, index, tx_state));
+    BOOST_CHECK_EQUAL(to_unlock, 2'050'000'000);
+    BOOST_CHECK_EQUAL(index, 0x001122334455667788L);
+
+    {
+        CMutableTransaction tx_bad_fee{tx};
+        const auto unlock_payload = GetTxPayload<CAssetUnlockPayload>(CTransaction(tx_bad_fee));
+        BOOST_REQUIRE(unlock_payload.has_value());
+        SetTxPayload(tx_bad_fee, CAssetUnlockPayload{
+            unlock_payload->getVersion(),
+            unlock_payload->getIndex(),
+            MAX_MONEY + 1,
+            unlock_payload->getRequestedHeight(),
+            unlock_payload->getQuorumHash(),
+            unlock_payload->getQuorumSig()});
+
+        BOOST_CHECK(!GetAssetUnlockAmount(CTransaction(tx_bad_fee), to_unlock, index, tx_state));
+        BOOST_CHECK_EQUAL(tx_state.GetRejectReason(), "failed-creditpool-unlock-amount-outofrange");
+    }
+
+    {
+        CMutableTransaction tx_bad_sum{tx};
+        tx_bad_sum.vout[0].nValue = MAX_MONEY;
+        tx_bad_sum.vout[1].nValue = 1;
+
+        BOOST_CHECK(!GetAssetUnlockAmount(CTransaction(tx_bad_sum), to_unlock, index, tx_state));
+        BOOST_CHECK_EQUAL(tx_state.GetRejectReason(), "failed-creditpool-unlock-amount-outofrange");
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

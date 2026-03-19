@@ -30,7 +30,7 @@ CAmount PlatformShare(const CAmount masternodeReward);
 
 static const std::string DB_CREDITPOOL_SNAPSHOT = "cpm_S";
 
-static bool GetDataFromUnlockTx(const CTransaction& tx, CAmount& toUnlock, uint64_t& index, TxValidationState& state)
+bool GetAssetUnlockAmount(const CTransaction& tx, CAmount& toUnlock, uint64_t& index, TxValidationState& state)
 {
     const auto opt_assetUnlockTx = GetTxPayload<CAssetUnlockPayload>(tx);
     if (!opt_assetUnlockTx.has_value()) {
@@ -39,9 +39,12 @@ static bool GetDataFromUnlockTx(const CTransaction& tx, CAmount& toUnlock, uint6
 
     index = opt_assetUnlockTx->getIndex();
     toUnlock = opt_assetUnlockTx->getFee();
+    if (!MoneyRange(toUnlock)) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "failed-creditpool-unlock-amount-outofrange");
+    }
     for (const CTxOut& txout : tx.vout) {
-        if (!MoneyRange(txout.nValue)) {
-            return state.Invalid(TxValidationResult::TX_CONSENSUS, "failed-creditpool-unlock-txout-outofrange");
+        if (!MoneyRange(txout.nValue) || !MoneyRange(toUnlock + txout.nValue)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "failed-creditpool-unlock-amount-outofrange");
         }
         toUnlock += txout.nValue;
     }
@@ -97,8 +100,8 @@ static std::optional<CreditPoolDataPerBlock> GetCreditDataFromBlock(const gsl::n
         CAmount unlocked{0};
         TxValidationState tx_state;
         uint64_t index{0};
-        if (!GetDataFromUnlockTx(*tx, unlocked, index, tx_state)) {
-            throw std::runtime_error(strprintf("%s: GetDataFromUnlockTx failed: %s", __func__, tx_state.ToString()));
+        if (!GetAssetUnlockAmount(*tx, unlocked, index, tx_state)) {
+            throw std::runtime_error(strprintf("%s: GetAssetUnlockAmount failed: %s", __func__, tx_state.ToString()));
         }
         blockData.unlocked += unlocked;
         blockData.indexes.insert(index);
@@ -279,8 +282,8 @@ bool CCreditPoolDiff::Unlock(const CTransaction& tx, TxValidationState& state)
 {
     uint64_t index{0};
     CAmount toUnlock{0};
-    if (!GetDataFromUnlockTx(tx, toUnlock, index, state)) {
-        // state is set up inside GetDataFromUnlockTx
+    if (!GetAssetUnlockAmount(tx, toUnlock, index, state)) {
+        // state is set up inside GetAssetUnlockAmount
         return false;
     }
 

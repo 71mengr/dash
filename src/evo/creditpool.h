@@ -151,4 +151,11 @@ std::optional<CCreditPoolDiff> GetCreditPoolDiffForBlock(CCreditPoolManager& cpo
                                                          const CBlock& block, const CBlockIndex* pindexPrev, const Consensus::Params& consensusParams,
                                                          const CAmount blockSubsidy, BlockValidationState& state);
 
+/**
+ * Extract the full amount being withdrawn by an Asset Unlock transaction.
+ * This includes the credited outputs plus the fee charged to the credit pool
+ * and rejects any cumulative amount that falls outside MoneyRange().
+ */
+bool GetAssetUnlockAmount(const CTransaction& tx, CAmount& toUnlock, uint64_t& index, TxValidationState& state);
+
 #endif // BITCOIN_EVO_CREDITPOOL_H
