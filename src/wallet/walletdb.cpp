@@ -691,7 +691,10 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
         } else if (strType == DBKeys::CHAT_SYNC_STATE) {
             CWalletChatSyncState sync_state;
             ssValue >> sync_state;
-            pwallet->LoadChatSyncState(sync_state);
+            if (!pwallet->LoadChatSyncState(sync_state)) {
+                strErr = "Invalid chat sync state";
+                return false;
+            }
         } else if (strType == DBKeys::OLD_KEY) {
             strErr = "Found unsupported 'wkey' record, try loading with version 0.17";
             return false;

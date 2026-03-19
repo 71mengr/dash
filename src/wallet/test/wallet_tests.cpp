@@ -1582,5 +1582,84 @@ BOOST_FIXTURE_TEST_CASE(wallet_sync_tx_invalid_state_test, TestChain100Setup)
                           HasReason("DB error adding transaction to wallet, write failed"));
 }
 
+BOOST_AUTO_TEST_CASE(chat_rejects_invalid_outbound_messages)
+{
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const std::string valid_address = EncodeDestination(PKHash(key.GetPubKey()));
+
+    auto empty_message = m_wallet.AddChatMessage(valid_address, ChatMessageDirection::OUTBOUND, "");
+    BOOST_CHECK(!empty_message);
+
+    auto invalid_address = m_wallet.AddChatMessage("not_a_dash_address", ChatMessageDirection::OUTBOUND, "hello");
+    BOOST_CHECK(!invalid_address);
+
+    std::string oversized(4097, 'x');
+    auto oversized_message = m_wallet.AddChatMessage(valid_address, ChatMessageDirection::OUTBOUND, oversized);
+    BOOST_CHECK(!oversized_message);
+}
+
+BOOST_AUTO_TEST_CASE(chat_export_import_uses_versioned_envelope)
+{
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const std::string address = EncodeDestination(PKHash(key.GetPubKey()));
+
+    auto saved = m_wallet.AddChatMessage(address, ChatMessageDirection::OUTBOUND, "hello chat");
+    BOOST_REQUIRE(saved);
+
+    auto exported = m_wallet.ExportChatSync();
+    BOOST_REQUIRE(exported);
+
+    std::vector<unsigned char> bytes = ParseHex(*exported);
+    CDataStream stream(bytes, SER_DISK, CLIENT_VERSION);
+    CWalletChatSyncEnvelope envelope;
+    stream >> envelope;
+
+    BOOST_CHECK_EQUAL(envelope.version, CWalletChatSyncEnvelope::CURRENT_VERSION);
+    BOOST_REQUIRE_EQUAL(envelope.messages.size(), 1U);
+    BOOST_CHECK_EQUAL(envelope.messages.front().id, saved->id);
+    BOOST_CHECK_EQUAL(envelope.messages.front().peer_address, address);
+
+    CWallet imported_wallet(m_node.chain.get(), m_coinjoin_loader.get(), "", m_args, CreateMockWalletDatabase());
+    imported_wallet.LoadWallet();
+
+    auto imported = imported_wallet.ImportChatSync(*exported);
+    BOOST_REQUIRE(imported);
+    BOOST_CHECK_EQUAL(*imported, 1U);
+
+    const auto imported_messages = imported_wallet.GetChatMessages(address);
+    BOOST_REQUIRE_EQUAL(imported_messages.size(), 1U);
+    BOOST_CHECK_EQUAL(imported_messages.front().id, saved->id);
+}
+
+BOOST_AUTO_TEST_CASE(chat_import_rejects_invalid_payloads)
+{
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const std::string address = EncodeDestination(PKHash(key.GetPubKey()));
+
+    CWalletChatSyncEnvelope envelope;
+    envelope.state.last_message_id = 2;
+
+    CWalletChatMessage first;
+    first.id = 2;
+    first.peer_address = address;
+    first.direction = ChatMessageDirection::OUTBOUND;
+    first.created_at = 1;
+    first.payload = {'o', 'k'};
+    envelope.messages.push_back(first);
+
+    CWalletChatMessage second = first;
+    second.id = 1;
+    envelope.messages.push_back(second);
+
+    CDataStream stream(SER_DISK, CLIENT_VERSION);
+    stream << envelope;
+
+    auto imported = m_wallet.ImportChatSync(HexStr(stream));
+    BOOST_CHECK(!imported);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 } // namespace wallet

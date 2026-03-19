@@ -159,6 +159,20 @@ struct CWalletChatSyncState
     }
 };
 
+struct CWalletChatSyncEnvelope
+{
+    static constexpr uint32_t CURRENT_VERSION{1};
+
+    uint32_t version{CURRENT_VERSION};
+    CWalletChatSyncState state;
+    std::vector<CWalletChatMessage> messages;
+
+    SERIALIZE_METHODS(CWalletChatSyncEnvelope, obj)
+    {
+        READWRITE(obj.version, obj.state, obj.messages);
+    }
+};
+
 extern RecursiveMutex cs_main;
 
 /** (client) version numbers for particular wallet features */
@@ -632,7 +646,7 @@ public:
     //! Adds a destination data tuple to the store, without saving it to disk
     void LoadDestData(const CTxDestination& dest, const std::string& key, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool LoadChatMessage(const CWalletChatMessage& message) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    void LoadChatSyncState(const CWalletChatSyncState& sync_state) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool LoadChatSyncState(const CWalletChatSyncState& sync_state) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime GUARDED_BY(cs_wallet){0};
