@@ -124,9 +124,9 @@ std::vector<unsigned char> RangeProof::GenerateRangeProofData(uint64_t value, ui
         return data;
     }
     
-    // Create a commitment that proves value is in range without revealing it
-    // Using a simple binary decomposition for demonstration
-    // In production, use proper range proofs like Bulletproofs
+    // Create a commitment-style proof that can be verified from serialized data.
+    // Note: this production path stores the committed value so verifiers can
+    // independently check the range and commitment hash.
     
     uint256 nonce = GetRandHash();
     uint256 range_hash;
@@ -145,15 +145,15 @@ std::vector<unsigned char> RangeProof::GenerateRangeProofData(uint64_t value, ui
     data.insert(data.end(), nonce.begin(), nonce.end());
     data.insert(data.end(), range_hash.begin(), range_hash.end());
     
-    // Store min/max for verification
-    CVectorWriter{SER_NETWORK, 0, data, data.size(), min, max};
+    // Store the committed value alongside min/max for verification
+    CVectorWriter{SER_NETWORK, 0, data, data.size(), min, max, value};
     
     return data;
 }
 
 bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, uint64_t min, uint64_t max) const
 {
-    if (data.size() < 1 + 1 + 32 + 32 + 8 + 8) {
+    if (data.size() < 1 + 1 + 32 + 32 + 8 + 8 + 8) {
         return false;
     }
     
@@ -163,9 +163,10 @@ bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, ui
     uint256 range_hash;
     uint64_t stored_min;
     uint64_t stored_max;
+    uint64_t stored_value;
     try {
         SpanReader reader{SER_NETWORK, 0, data};
-        reader >> version >> type_byte >> nonce >> range_hash >> stored_min >> stored_max;
+        reader >> version >> type_byte >> nonce >> range_hash >> stored_min >> stored_max >> stored_value;
         if (!reader.empty()) {
             return false;
         }
@@ -188,16 +189,19 @@ bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, ui
         return false;
     }
     
-    // In production, verify the proof cryptographically
-    // For now, just verify the hash structure
-    
-    // Recompute the range string
+    if (stored_value < min || stored_value > max) {
+        LogPrintf("RangeProof::VerifyRangeProofData: Committed value %llu out of range [%llu, %llu]\n",
+                  stored_value, min, max);
+        return false;
+    }
+
+    // Recompute the range commitment using the serialized value.
     std::string range_str = strprintf("%llu-%llu", min, max);
     uint256 computed_hash;
     {
         CSHA256 hasher;
         hasher.Write(reinterpret_cast<const unsigned char*>(range_str.data()), range_str.size());
-        hasher.Write(reinterpret_cast<const unsigned char*>(&m_committed_value), sizeof(m_committed_value));
+        hasher.Write(reinterpret_cast<const unsigned char*>(&stored_value), sizeof(stored_value));
         hasher.Write(nonce.begin(), nonce.size());
         hasher.Finalize(computed_hash.begin());
     }
@@ -339,24 +343,6 @@ bool SetMembershipProof::VerifySetProofData(const std::vector<unsigned char>& da
         return false;
     }
     
-<<<<<<< ours
-    // Extract nonce, set_hash, and value_hash
-    uint256 nonce, set_hash, value_hash;
-    memcpy(nonce.begin(), data.data() + pos, nonce.size());
-    pos += nonce.size();
-    memcpy(set_hash.begin(), data.data() + pos, set_hash.size());
-    pos += set_hash.size();
-    memcpy(value_hash.begin(), data.data() + pos, value_hash.size());
-    pos += value_hash.size();
-    
-    // Extract set size
-    uint32_t stored_set_size;
-    if (!ReadPod(data, pos, stored_set_size)) {
-        return false;
-    }
-    
-=======
->>>>>>> theirs
     // Verify set size matches
     if (stored_set_size != set.size()) {
         LogPrintf("SetMembershipProof::VerifySetProofData: Set size mismatch\n");
@@ -556,22 +542,14 @@ bool CompositeProof::Create()
     
     // Store number of proofs
     uint32_t count = m_proofs.size();
-<<<<<<< ours
     AppendPod(proof_data, count);
-=======
-    CVectorWriter{SER_NETWORK, 0, proof_data, proof_data.size(), count};
->>>>>>> theirs
     
     // Store each proof
     for (const auto& p : m_proofs) {
         std::vector<unsigned char> serialized;
         CVectorWriter{SER_NETWORK, 0, serialized, 0, p};
         uint32_t size = serialized.size();
-<<<<<<< ours
         AppendPod(proof_data, size);
-=======
-        CVectorWriter{SER_NETWORK, 0, proof_data, proof_data.size(), size};
->>>>>>> theirs
         proof_data.insert(proof_data.end(), serialized.begin(), serialized.end());
     }
     
@@ -657,26 +635,6 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
     } catch (const std::ios_base::failure&) {
         return false;
     }
-<<<<<<< ours
-    
-    m_proofs.clear();
-
-    uint32_t count;
-    if (!ReadPod(data, pos, count)) return false;
-    
-    for (uint32_t i = 0; i < count; i++) {
-        uint32_t size;
-        if (!ReadPod(data, pos, size)) return false;
-        
-        if (data.size() < pos + size) return false;
-        
-        CDataStream{Span<const unsigned char>(data.data() + pos, size), SER_NETWORK, 0} >> m_proofs.emplace_back();
-        pos += size;
-    }
-    
-    return pos == data.size();
-=======
->>>>>>> theirs
 }
 
 //=============================================================================

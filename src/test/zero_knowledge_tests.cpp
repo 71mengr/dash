@@ -25,6 +25,17 @@ BOOST_AUTO_TEST_CASE(range_proof_detects_tampered_challenge)
     BOOST_CHECK(!tampered.Verify(/*min=*/18, /*max=*/65));
 }
 
+
+BOOST_AUTO_TEST_CASE(range_proof_survives_roundtrip_verification)
+{
+    zkproof::RangeProof proof;
+    BOOST_REQUIRE(proof.Create(/*value=*/21, /*min=*/18, /*max=*/65));
+
+    zkproof::RangeProof roundtrip;
+    BOOST_REQUIRE(roundtrip.SetProof(proof.GetProof()));
+    BOOST_CHECK(roundtrip.Verify(/*min=*/18, /*max=*/65));
+}
+
 BOOST_AUTO_TEST_CASE(composite_proof_rejects_trailing_bytes)
 {
     const auto age_proof = zkproof::utils::CreateAgeProof(/*birth_date=*/1, /*min_age=*/0);
