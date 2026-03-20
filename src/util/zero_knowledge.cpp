@@ -146,10 +146,7 @@ std::vector<unsigned char> RangeProof::GenerateRangeProofData(uint64_t value, ui
     data.insert(data.end(), range_hash.begin(), range_hash.end());
     
     // Store min/max for verification
-    data.insert(data.end(), reinterpret_cast<unsigned char*>(&min), 
-                reinterpret_cast<unsigned char*>(&min) + sizeof(min));
-    data.insert(data.end(), reinterpret_cast<unsigned char*>(&max), 
-                reinterpret_cast<unsigned char*>(&max) + sizeof(max));
+    CVectorWriter{SER_NETWORK, 0, data, data.size(), min, max};
     
     return data;
 }
@@ -160,30 +157,27 @@ bool RangeProof::VerifyRangeProofData(const std::vector<unsigned char>& data, ui
         return false;
     }
     
-    size_t pos = 0;
-    
-    uint8_t version = data[pos++];
+    uint8_t version;
+    uint8_t type_byte;
+    uint256 nonce;
+    uint256 range_hash;
+    uint64_t stored_min;
+    uint64_t stored_max;
+    try {
+        SpanReader reader{SER_NETWORK, 0, data};
+        reader >> version >> type_byte >> nonce >> range_hash >> stored_min >> stored_max;
+        if (!reader.empty()) {
+            return false;
+        }
+    } catch (const std::ios_base::failure&) {
+        return false;
+    }
+
     if (version != PROOF_VERSION_V2) {
         return false;
     }
     
-    uint8_t type_byte = data[pos++];
     if (type_byte != static_cast<uint8_t>(ProofType::RANGE_PROOF)) {
-        return false;
-    }
-
-    // Extract nonce and hash
-    uint256 nonce;
-    uint256 range_hash;
-    memcpy(nonce.begin(), data.data() + pos, nonce.size());
-    pos += nonce.size();
-    memcpy(range_hash.begin(), data.data() + pos, range_hash.size());
-    pos += range_hash.size();
-    
-    // Extract stored min/max
-    uint64_t stored_min;
-    uint64_t stored_max;
-    if (!ReadPod(data, pos, stored_min) || !ReadPod(data, pos, stored_max)) {
         return false;
     }
     
@@ -310,8 +304,7 @@ std::vector<unsigned char> SetMembershipProof::GenerateSetProofData(
     
     // Store set size for verification
     uint32_t set_size = set.size();
-    AppendPod(data, set_size);
-    
+    CVectorWriter{SER_NETWORK, 0, data, data.size(), set_size};    
     return data;
 }
 
@@ -322,18 +315,31 @@ bool SetMembershipProof::VerifySetProofData(const std::vector<unsigned char>& da
         return false;
     }
     
-    size_t pos = 0;
-    
-    uint8_t version = data[pos++];
+    uint8_t version;
+    uint8_t type_byte;
+    uint256 nonce;
+    uint256 set_hash;
+    uint256 value_hash;
+    uint32_t stored_set_size;
+    try {
+        SpanReader reader{SER_NETWORK, 0, data};
+        reader >> version >> type_byte >> nonce >> set_hash >> value_hash >> stored_set_size;
+        if (!reader.empty()) {
+            return false;
+        }
+    } catch (const std::ios_base::failure&) {
+        return false;
+    }
+
     if (version != PROOF_VERSION_V2) {
         return false;
     }
     
-    uint8_t type_byte = data[pos++];
     if (type_byte != static_cast<uint8_t>(ProofType::SET_MEMBERSHIP)) {
         return false;
     }
     
+<<<<<<< ours
     // Extract nonce, set_hash, and value_hash
     uint256 nonce, set_hash, value_hash;
     memcpy(nonce.begin(), data.data() + pos, nonce.size());
@@ -349,6 +355,8 @@ bool SetMembershipProof::VerifySetProofData(const std::vector<unsigned char>& da
         return false;
     }
     
+=======
+>>>>>>> theirs
     // Verify set size matches
     if (stored_set_size != set.size()) {
         LogPrintf("SetMembershipProof::VerifySetProofData: Set size mismatch\n");
@@ -548,14 +556,22 @@ bool CompositeProof::Create()
     
     // Store number of proofs
     uint32_t count = m_proofs.size();
+<<<<<<< ours
     AppendPod(proof_data, count);
+=======
+    CVectorWriter{SER_NETWORK, 0, proof_data, proof_data.size(), count};
+>>>>>>> theirs
     
     // Store each proof
     for (const auto& p : m_proofs) {
         std::vector<unsigned char> serialized;
         CVectorWriter{SER_NETWORK, 0, serialized, 0, p};
         uint32_t size = serialized.size();
+<<<<<<< ours
         AppendPod(proof_data, size);
+=======
+        CVectorWriter{SER_NETWORK, 0, proof_data, proof_data.size(), size};
+>>>>>>> theirs
         proof_data.insert(proof_data.end(), serialized.begin(), serialized.end());
     }
     
@@ -612,17 +628,36 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
     
     m_proof = proof;
     
-    // Deserialize sub-proofs
-    const auto& data = proof.proof_data;
-    size_t pos = 0;
-    
-    if (data.size() < 1 + 1 + 4) return false;
-    
-    uint8_t version = data[pos++];
-    uint8_t type_byte = data[pos++];
-    if (version != PROOF_VERSION_V2 || type_byte != static_cast<uint8_t>(ProofType::COMPOSITE_PROOF)) {
+    m_proofs.clear();
+
+    try {
+        SpanReader reader{SER_NETWORK, 0, proof.proof_data};
+        uint8_t version;
+        uint8_t type_byte;
+        uint32_t count;
+        reader >> version >> type_byte >> count;
+        if (version != PROOF_VERSION_V2 || type_byte != static_cast<uint8_t>(ProofType::COMPOSITE_PROOF)) {
+            return false;
+        }
+
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t size;
+            reader >> size;
+            if (reader.size() < size) {
+                return false;
+            }
+
+            std::vector<unsigned char> serialized(size);
+            reader.read(MakeWritableByteSpan(serialized));
+            CDataStream ds{serialized, SER_NETWORK, 0};
+            ds >> m_proofs.emplace_back();
+        }
+
+        return reader.empty();
+    } catch (const std::ios_base::failure&) {
         return false;
     }
+<<<<<<< ours
     
     m_proofs.clear();
 
@@ -640,6 +675,8 @@ bool CompositeProof::SetProof(const ExtendedProof& proof)
     }
     
     return pos == data.size();
+=======
+>>>>>>> theirs
 }
 
 //=============================================================================
