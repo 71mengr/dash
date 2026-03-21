@@ -29,7 +29,10 @@
 #include <coinjoin/client.h>
 #include <coinjoin/options.h>
 
+#include <algorithm>
+#include <cctype>
 #include <optional>
+#include <set>
 
 #include <univalue.h>
 
@@ -59,6 +62,69 @@ static void EnsureCredentialTestingChain(const std::string& rpc_name)
 static bool IsTrustedCredentialIssuer(const std::string& issuer)
 {
     return issuer == "coinfirm" || issuer == "did:dash:trusted-issuer" || issuer.rfind("did:coinfirm:", 0) == 0;
+}
+
+static const std::set<std::string>& ValidLocalVerificationCountries()
+{
+    static const std::set<std::string> countries{
+        "AFGHANISTAN", "ALBANIA", "ALGERIA", "ANDORRA", "ANGOLA",
+        "ANTIGUA AND BARBUDA", "ARGENTINA", "ARMENIA", "AUSTRALIA", "AUSTRIA",
+        "AZERBAIJAN", "BAHAMAS", "BAHRAIN", "BANGLADESH", "BARBADOS",
+        "BELARUS", "BELGIUM", "BELIZE", "BENIN", "BHUTAN",
+        "BOLIVIA", "BOSNIA AND HERZEGOVINA", "BOTSWANA", "BRAZIL", "BRUNEI",
+        "BULGARIA", "BURKINA FASO", "BURUNDI", "CABO VERDE", "CAMBODIA",
+        "CAMEROON", "CANADA", "CENTRAL AFRICAN REPUBLIC", "CHAD", "CHILE",
+        "CHINA", "COLOMBIA", "COMOROS", "CONGO", "COSTA RICA",
+        "COTE DIVOIRE", "CROATIA", "CUBA", "CYPRUS", "CZECHIA",
+        "DEMOCRATIC REPUBLIC OF THE CONGO", "DENMARK", "DJIBOUTI", "DOMINICA", "DOMINICAN REPUBLIC",
+        "ECUADOR", "EGYPT", "EL SALVADOR", "EQUATORIAL GUINEA", "ERITREA",
+        "ESTONIA", "ESWATINI", "ETHIOPIA", "FIJI", "FINLAND",
+        "FRANCE", "GABON", "GAMBIA", "GEORGIA", "GERMANY",
+        "GHANA", "GREECE", "GRENADA", "GUATEMALA", "GUINEA",
+        "GUINEA-BISSAU", "GUYANA", "HAITI", "HONDURAS", "HUNGARY",
+        "ICELAND", "INDIA", "INDONESIA", "IRAN", "IRAQ",
+        "IRELAND", "ISRAEL", "ITALY", "JAMAICA", "JAPAN",
+        "JORDAN", "KAZAKHSTAN", "KENYA", "KIRIBATI", "KUWAIT",
+        "KYRGYZSTAN", "LAOS", "LATVIA", "LEBANON", "LESOTHO",
+        "LIBERIA", "LIBYA", "LIECHTENSTEIN", "LITHUANIA", "LUXEMBOURG",
+        "MADAGASCAR", "MALAWI", "MALAYSIA", "MALDIVES", "MALI",
+        "MALTA", "MARSHALL ISLANDS", "MAURITANIA", "MAURITIUS", "MEXICO",
+        "MICRONESIA", "MOLDOVA", "MONACO", "MONGOLIA", "MONTENEGRO",
+        "MOROCCO", "MOZAMBIQUE", "MYANMAR", "NAMIBIA", "NAURU",
+        "NEPAL", "NETHERLANDS", "NEW ZEALAND", "NICARAGUA", "NIGER",
+        "NIGERIA", "NORTH KOREA", "NORTH MACEDONIA", "NORWAY", "OMAN",
+        "PAKISTAN", "PALAU", "PALESTINE", "PANAMA", "PAPUA NEW GUINEA",
+        "PARAGUAY", "PERU", "PHILIPPINES", "POLAND", "PORTUGAL",
+        "QATAR", "ROMANIA", "RUSSIA", "RWANDA", "SAINT KITTS AND NEVIS",
+        "SAINT LUCIA", "SAINT VINCENT AND THE GRENADINES", "SAMOA", "SAN MARINO", "SAO TOME AND PRINCIPE",
+        "SAUDI ARABIA", "SENEGAL", "SERBIA", "SEYCHELLES", "SIERRA LEONE",
+        "SINGAPORE", "SLOVAKIA", "SLOVENIA", "SOLOMON ISLANDS", "SOMALIA",
+        "SOUTH AFRICA", "SOUTH KOREA", "SOUTH SUDAN", "SPAIN", "SRI LANKA",
+        "SUDAN", "SURINAME", "SWEDEN", "SWITZERLAND", "SYRIA",
+        "TAIWAN", "TAJIKISTAN", "TANZANIA", "THAILAND", "TIMOR-LESTE",
+        "TOGO", "TONGA", "TRINIDAD AND TOBAGO", "TUNISIA", "TURKEY",
+        "TURKMENISTAN", "TUVALU", "UGANDA", "UKRAINE", "UNITED ARAB EMIRATES",
+        "UNITED KINGDOM", "UNITED STATES", "URUGUAY", "UZBEKISTAN", "VANUATU",
+        "VATICAN CITY", "VENEZUELA", "VIETNAM", "YEMEN", "ZAMBIA", "ZIMBABWE",
+    };
+    return countries;
+}
+
+static std::string NormalizeLocalVerificationValue(std::string value)
+{
+    auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+    return value;
+}
+
+static std::string NormalizeLocalVerificationCountry(std::string country)
+{
+    country = NormalizeLocalVerificationValue(std::move(country));
+    std::transform(country.begin(), country.end(), country.begin(), [](unsigned char ch) {
+        return ch == '_' ? ' ' : static_cast<char>(std::toupper(ch));
+    });
+    return country;
 }
 
 static RPCHelpMan listaddressbalances()
@@ -334,6 +400,122 @@ static RPCHelpMan importkyccredential()
     UniValue result(UniValue::VOBJ);
     result.pushKV("success", success);
     result.pushKV("wallet_verified", pwallet->IsVerified());
+    return result;
+},
+    };
+}
+
+static RPCHelpMan localverify()
+{
+    return RPCHelpMan{"local-verify",
+        "\nRun local verification for the wallet using the provided identity fields.\n"
+        "\nThis RPC is only available on mockable test chains and marks the wallet as verified after the checks pass.\n",
+        {
+            {"full_name", RPCArg::Type::STR, RPCArg::Optional::NO, "Full legal name. Must contain at least two words and only letters, spaces, apostrophes, periods, or hyphens."},
+            {"age", RPCArg::Type::NUM, RPCArg::Optional::NO, "Age in years. Must be between 18 and 120."},
+            {"country", RPCArg::Type::STR, RPCArg::Optional::NO, "Country name. Must match a supported real country name."},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "success", "Whether local verification succeeded"},
+                {RPCResult::Type::BOOL, "wallet_verified", "Whether the wallet is now verified"},
+                {RPCResult::Type::STR, "full_name", "Normalized full name"},
+                {RPCResult::Type::NUM, "age", "Validated age"},
+                {RPCResult::Type::STR, "country", "Normalized country"},
+                {RPCResult::Type::ARR, "allowed_countries", "Supported countries for the country check",
+                    {
+                        {RPCResult::Type::STR, "", "Country name"},
+                    }},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("local-verify", "\"Ada Lovelace\" 36 \"United Kingdom\"")
+            + HelpExampleRpc("local-verify", "\"Ada Lovelace\", 36, \"United Kingdom\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+    EnsureCredentialTestingChain("local-verify");
+
+    const std::string full_name = NormalizeLocalVerificationValue(request.params[0].get_str());
+    if (full_name.size() < 5) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Full name must be at least 5 characters long");
+    }
+    if (full_name.find(' ') == std::string::npos) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Full name must include at least first name and last name");
+    }
+    for (const char ch : full_name) {
+        if (!(std::isalpha(static_cast<unsigned char>(ch)) || ch == ' ' || ch == '\'' || ch == '-' || ch == '.')) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Full name contains unsupported characters");
+        }
+    }
+
+    const int age = request.params[1].getInt<int>();
+    if (age < 18 || age > 120) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Age must be between 18 and 120");
+    }
+
+    const std::string country = NormalizeLocalVerificationCountry(request.params[2].get_str());
+    const auto& valid_countries = ValidLocalVerificationCountries();
+    if (!valid_countries.count(country)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Country must be a supported real country name");
+    }
+
+    const std::string full_name_hash = Hash(full_name.begin(), full_name.end()).GetHex();
+    const std::string wallet_name = pwallet->GetName();
+    const std::string wallet_name_hash = Hash(wallet_name.begin(), wallet_name.end()).GetHex();
+    const std::string credential_str = strprintf(
+        "{\"issuer\":\"local-verification\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
+        "\"credentialSubject\":{\"full_name\":\"%s\",\"full_name_hash\":\"%s\",\"email\":\"%s\",\"email_hash\":\"%s\","
+        "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\"}}",
+        full_name,
+        full_name_hash,
+        wallet_name,
+        wallet_name_hash,
+        country,
+        age,
+        full_name,
+        wallet_name);
+
+    std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+    LocalVerificationProvider provider;
+    CCredentialMetadata metadata;
+    if (!provider.VerifyCredential(credential_data, metadata)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Local verification failed");
+    }
+
+    CWalletCredential cred;
+    if (!cred.SetCredential(credential_data)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to create local verification credential");
+    }
+    cred.SetMetadata(metadata);
+
+    {
+        LOCK(pwallet->cs_wallet);
+        WalletBatch batch(pwallet->GetDatabase());
+        if (!batch.WriteCredential(cred)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to write credential to database");
+        }
+        if (!batch.WriteCredentialMetadata(metadata) || !batch.WriteCredentialStatus(cred.GetStatus())) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to persist credential metadata");
+        }
+        pwallet->SetCredential(cred);
+    }
+
+    UniValue allowed_countries(UniValue::VARR);
+    for (const auto& valid_country : valid_countries) {
+        allowed_countries.push_back(valid_country);
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("success", true);
+    result.pushKV("wallet_verified", pwallet->IsVerified());
+    result.pushKV("full_name", full_name);
+    result.pushKV("age", age);
+    result.pushKV("country", country);
+    result.pushKV("allowed_countries", std::move(allowed_countries));
     return result;
 },
     };
@@ -1962,11 +2144,12 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &setwalletcredential},
         {"wallet", &getwalletcredential},
         {"wallet", &importcredential},
+        {"wallet", &localverify},
         {"wallet", &chat},
-         {"wallet", &setkycprovider},
-         {"wallet", &startkyc},
-         {"wallet", &completekyc},
-         {"wallet", &importkyccredential},
+        {"wallet", &setkycprovider},
+        {"wallet", &startkyc},
+        {"wallet", &completekyc},
+        {"wallet", &importkyccredential},
         {"wallet", &checkkyc},
     };
     return commands;

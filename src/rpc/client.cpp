@@ -198,6 +198,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "setcoinjoinrounds", 0, "rounds" },
     { "setcoinjoinamount", 0, "amount" },
     { "setwalletflag", 1, "value" },
+    { "local-verify", 1, "age" },
     { "getmempoolancestors", 1, "verbose" },
     { "getmempooldescendants", 1, "verbose" },
     { "gettxspendingprevout", 0, "outputs" },

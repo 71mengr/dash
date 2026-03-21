@@ -44,6 +44,7 @@ extern RPCHelpMan getnewaddress();
 extern RPCHelpMan getrawchangeaddress();
 extern RPCHelpMan getaddressinfo();
 extern RPCHelpMan addmultisigaddress();
+extern RPCHelpMan localverify();
 
 // Ensure that fee levels defined in the wallet are at least as high
 // as the default levels for node policy.
@@ -298,6 +299,60 @@ BOOST_FIXTURE_TEST_CASE(kyc_provider_defaults_to_local_verification_flow, Wallet
     BOOST_CHECK(session_res->url.find("local-verification://start?") != std::string::npos);
     BOOST_CHECK(session_res->url.find("required_fields=full_name%2Cemail%2Ccountry%2Cage%2Cowner_name") != std::string::npos);
     BOOST_CHECK(session_res->url.find("auto_hash_fields=full_name%2Cemail") != std::string::npos);
+
+    TestUnloadWallet(context, std::move(wallet));
+}
+
+BOOST_FIXTURE_TEST_CASE(local_verify_rpc_marks_wallet_verified_and_allows_address_generation, WalletTestingSetup)
+{
+    WalletContext context;
+    context.args = &m_args;
+    context.chain = m_node.chain.get();
+    context.coinjoin_loader = m_node.coinjoin_loader.get();
+    auto wallet = TestLoadWallet(context);
+    BOOST_REQUIRE(wallet);
+
+    JSONRPCRequest request;
+    request.context = context;
+    request.params.setArray();
+
+    BOOST_CHECK_THROW(wallet::getnewaddress().HandleRequest(request), UniValue);
+
+    request.params.push_back("Ada Lovelace");
+    request.params.push_back(36);
+    request.params.push_back("united kingdom");
+
+    const UniValue response = wallet::localverify().HandleRequest(request).get_obj();
+    BOOST_CHECK(response.find_value("success").get_bool());
+    BOOST_CHECK(response.find_value("wallet_verified").get_bool());
+    BOOST_CHECK_EQUAL(response.find_value("country").get_str(), "UNITED KINGDOM");
+    BOOST_CHECK(wallet->IsVerified());
+
+    request.params.clear();
+    request.params.setArray();
+    BOOST_CHECK_NO_THROW(wallet::getnewaddress().HandleRequest(request).get_str());
+
+    TestUnloadWallet(context, std::move(wallet));
+}
+
+BOOST_FIXTURE_TEST_CASE(local_verify_rpc_rejects_invalid_age_and_country, WalletTestingSetup)
+{
+    WalletContext context;
+    context.args = &m_args;
+    context.chain = m_node.chain.get();
+    context.coinjoin_loader = m_node.coinjoin_loader.get();
+    auto wallet = TestLoadWallet(context);
+    BOOST_REQUIRE(wallet);
+
+    JSONRPCRequest request;
+    request.context = context;
+    request.params.setArray();
+    request.params.push_back("Ada Lovelace");
+    request.params.push_back(17);
+    request.params.push_back("Atlantis");
+
+    BOOST_CHECK_THROW(wallet::localverify().HandleRequest(request), UniValue);
+    BOOST_CHECK(!wallet->IsVerified());
 
     TestUnloadWallet(context, std::move(wallet));
 }
