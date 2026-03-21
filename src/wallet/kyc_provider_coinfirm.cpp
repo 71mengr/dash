@@ -13,6 +13,8 @@
 #include <optional>
 #include <sstream>
 
+#include <univalue.h>
+
 namespace wallet {
 namespace {
 
@@ -77,6 +79,37 @@ static std::string MapKYCLevelToDiditFlow(KYCLevel level)
             break;
     }
     return "unknown";
+}
+
+
+static std::string HashAttributeHex(const std::string& value)
+{
+    if (value.empty()) {
+        return {};
+    }
+    const auto hash = Hash(value.begin(), value.end());
+    return hash.GetHex();
+}
+
+static util::Result<UniValue> ParseCredentialObject(const std::vector<unsigned char>& credential)
+{
+    UniValue json(UniValue::VOBJ);
+    const std::string credential_str(credential.begin(), credential.end());
+    if (!json.read(credential_str)) {
+        return util::Error{_("Credential must be valid JSON")};
+    }
+    return json;
+}
+
+static bool ExtractCredentialSubjectField(const UniValue& subject,
+                                          const std::string& key,
+                                          std::string& value_out)
+{
+    if (!subject.exists(key) || !subject[key].isStr()) {
+        return false;
+    }
+    value_out = subject[key].get_str();
+    return !value_out.empty();
 }
 
 struct CoinfirmProvider::Impl {
@@ -252,6 +285,75 @@ struct DiditProvider::Impl {
                 "{\"issuer\":\"didit\",\"session_id\":\"%s\",\"decision\":\"approved\"}",
                 session.session_id.c_str());
             session.credential.assign(credential_json.begin(), credential_json.end());
+        }
+        return session;
+    }
+};
+
+struct LocalVerificationProvider::Impl {
+    std::string issuer_id{"local-verification"};
+    std::string issuer_name{"Local Verification"};
+    std::string base_url{"local-verification://start"};
+    std::map<std::string, KYCSession> sessions;
+
+    std::string BuildVerificationUrl(const KYCSession& session,
+                                     const std::string& wallet_name,
+                                     const std::string& callback_url) const
+    {
+        std::vector<std::pair<std::string, std::string>> params{
+            {"session_id", session.session_id},
+            {"wallet", wallet_name},
+            {"level", KYCLevelToProviderString(session.level)},
+            {"required_fields", "full_name,email,country,age,owner_name"},
+            {"auto_hash_fields", "full_name,email"},
+            {"auto_verify_fields", "owner_name"},
+        };
+
+        if (!callback_url.empty()) {
+            params.emplace_back("callback_url", callback_url);
+        }
+
+        std::string url = base_url + "?";
+        bool first = true;
+        for (const auto& [key, value] : params) {
+            if (!first) {
+                url += '&';
+            }
+            first = false;
+            url += UrlEncode(key);
+            url += '=';
+            url += UrlEncode(value);
+        }
+        return url;
+    }
+
+    util::Result<KYCSession> StartSession(KYCLevel level,
+                                          const std::string& wallet_name,
+                                          const std::string& callback_url)
+    {
+        KYCSession session;
+        session.session_id = "local_" + GetRandHash().ToString().substr(0, 16);
+        session.provider = KYCProviderType::INTERNAL;
+        session.level = level;
+        session.created_at = GetTime();
+        session.expires_at = session.created_at + 24 * 60 * 60;
+        session.status = "pending";
+        session.url = BuildVerificationUrl(session, wallet_name, callback_url);
+
+        sessions[session.session_id] = session;
+        return session;
+    }
+
+    util::Result<KYCSession> CheckSession(const std::string& session_id) const
+    {
+        const auto it = sessions.find(session_id);
+        if (it == sessions.end()) {
+            return util::Error{_("Session not found")};
+        }
+
+        KYCSession session = it->second;
+        if (session.status == "pending" && session.expires_at > 0 && GetTime() > session.expires_at) {
+            session.status = "expired";
         }
         return session;
     }
@@ -443,6 +545,152 @@ std::vector<KYCLevel> DiditProvider::GetSupportedLevels() const
     };
 }
 
+LocalVerificationProvider::LocalVerificationProvider()
+    : m_impl(std::make_unique<Impl>()) {}
+
+LocalVerificationProvider::~LocalVerificationProvider() = default;
+
+util::Result<KYCSession> LocalVerificationProvider::StartSession(KYCLevel level,
+                                                                 const std::string& wallet_name,
+                                                                 const std::string& callback_url)
+{
+    LogPrintf("LocalVerificationProvider::StartSession - level=%d, wallet=%s, callback=%s\n",
+              static_cast<int>(level), wallet_name, callback_url);
+    return m_impl->StartSession(level, wallet_name, callback_url);
+}
+
+util::Result<KYCSession> LocalVerificationProvider::CheckSession(const std::string& session_id)
+{
+    LogPrintf("LocalVerificationProvider::CheckSession - session=%s\n", session_id);
+    return m_impl->CheckSession(session_id);
+}
+
+util::Result<std::vector<unsigned char>> LocalVerificationProvider::GetCredential(const std::string& session_id)
+{
+    auto session_res = CheckSession(session_id);
+    if (!session_res) {
+        return util::Error{util::ErrorString(session_res)};
+    }
+
+    const auto& session = *session_res;
+    if (session.status != "completed" || session.credential.empty()) {
+        return util::Error{_("Credential not available for session")};
+    }
+
+    return session.credential;
+}
+
+bool LocalVerificationProvider::VerifyCredential(const std::vector<unsigned char>& credential,
+                                                 CCredentialMetadata& metadata)
+{
+    auto credential_json_res = ParseCredentialObject(credential);
+    if (!credential_json_res) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: invalid JSON credential\n");
+        return false;
+    }
+
+    const UniValue& credential_json = *credential_json_res;
+    if (!credential_json.exists("issuer") || !credential_json["issuer"].isStr()) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: missing issuer\n");
+        return false;
+    }
+
+    const std::string issuer = credential_json["issuer"].get_str();
+    if (!IsIssuerTrusted(issuer)) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: untrusted issuer %s\n", issuer);
+        return false;
+    }
+
+    if (!credential_json.exists("credentialSubject") || !credential_json["credentialSubject"].isObject()) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: missing credentialSubject\n");
+        return false;
+    }
+
+    const UniValue subject = credential_json["credentialSubject"].get_obj();
+    std::string full_name;
+    std::string email;
+    std::string country;
+    std::string owner_name;
+    if (!ExtractCredentialSubjectField(subject, "full_name", full_name) ||
+        !ExtractCredentialSubjectField(subject, "email", email) ||
+        !ExtractCredentialSubjectField(subject, "country", country) ||
+        !ExtractCredentialSubjectField(subject, "owner_name", owner_name)) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: missing required subject fields\n");
+        return false;
+    }
+
+    if (!subject.exists("age") || !subject["age"].isNum()) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: missing numeric age\n");
+        return false;
+    }
+
+    const int age = subject["age"].getInt<int>();
+    if (age < 18) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: age %d below minimum\n", age);
+        return false;
+    }
+
+    const std::string expected_name_hash = HashAttributeHex(full_name);
+    const std::string expected_email_hash = HashAttributeHex(email);
+    if (subject.exists("full_name_hash") && subject["full_name_hash"].isStr() &&
+        subject["full_name_hash"].get_str() != expected_name_hash) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: full_name_hash mismatch\n");
+        return false;
+    }
+    if (subject.exists("email_hash") && subject["email_hash"].isStr() &&
+        subject["email_hash"].get_str() != expected_email_hash) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: email_hash mismatch\n");
+        return false;
+    }
+
+    bool owner_name_verified = false;
+    if (subject.exists("owner_name_verified")) {
+        if (subject["owner_name_verified"].isBool()) {
+            owner_name_verified = subject["owner_name_verified"].get_bool();
+        } else if (subject["owner_name_verified"].isStr()) {
+            owner_name_verified = subject["owner_name_verified"].get_str() == "true";
+        }
+    }
+    if (!owner_name_verified) {
+        owner_name_verified = owner_name == full_name;
+    }
+    if (!owner_name_verified) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: owner name could not be verified\n");
+        return false;
+    }
+
+    CWalletCredential parsed_credential;
+    if (!parsed_credential.SetCredential(credential)) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: credential parsing failed\n");
+        return false;
+    }
+
+    metadata = parsed_credential.GetMetadata();
+    metadata.issuer = issuer;
+    metadata.credentialType = "local_verification";
+    metadata.credentialHash = Hash(credential);
+    if (metadata.nExpiresAt > 0 && GetTime() > metadata.nExpiresAt) {
+        LogPrintf("LocalVerificationProvider::VerifyCredential: credential expired at %lld\n", metadata.nExpiresAt);
+        return false;
+    }
+
+    return true;
+}
+
+bool LocalVerificationProvider::IsIssuerTrusted(const std::string& issuer_did)
+{
+    return issuer_did == m_impl->issuer_id || issuer_did == "local" || issuer_did == "internal";
+}
+
+std::vector<KYCLevel> LocalVerificationProvider::GetSupportedLevels() const
+{
+    return {
+        KYCLevel::BASIC_LEVEL,
+        KYCLevel::ADVANCED_LEVEL,
+        KYCLevel::FULL_LEVEL,
+    };
+}
+
 VerifiableCredentialProvider::VerifiableCredentialProvider()
     : m_impl(std::make_unique<Impl>())
 {
@@ -547,6 +795,8 @@ std::unique_ptr<KYCProvider> KYCProviderFactory::CreateProvider(
         }
         case KYCProviderType::CUSTOM_VC:
             return std::make_unique<VerifiableCredentialProvider>();
+        case KYCProviderType::INTERNAL:
+            return std::make_unique<LocalVerificationProvider>();
         case KYCProviderType::DIDIT: {
             auto api_key = config.find("api_key");
             auto workflow_id = config.find("workflow_id");
@@ -569,6 +819,7 @@ std::unique_ptr<KYCProvider> KYCProviderFactory::CreateProvider(
 std::vector<KYCProviderType> KYCProviderFactory::GetAvailableProviders()
 {
     return {
+        KYCProviderType::INTERNAL,
         KYCProviderType::COINFIRM,
         KYCProviderType::CUSTOM_VC,
         KYCProviderType::DIDIT,

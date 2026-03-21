@@ -282,6 +282,26 @@ BOOST_FIXTURE_TEST_CASE(kyc_provider_supports_didit_sessions, WalletTestingSetup
     TestUnloadWallet(context, std::move(wallet));
 }
 
+BOOST_FIXTURE_TEST_CASE(kyc_provider_defaults_to_local_verification_flow, WalletTestingSetup)
+{
+    WalletContext context;
+    context.args = &m_args;
+    context.chain = m_node.chain.get();
+    context.coinjoin_loader = m_node.coinjoin_loader.get();
+    auto wallet = TestLoadWallet(context);
+    BOOST_REQUIRE(wallet);
+
+    auto session_res = wallet->StartKYCVerification(KYCLevel::BASIC_LEVEL, "https://callback.example/local");
+    BOOST_REQUIRE(session_res);
+    BOOST_CHECK_EQUAL(session_res->provider, KYCProviderType::INTERNAL);
+    BOOST_CHECK_EQUAL(session_res->status, "pending");
+    BOOST_CHECK(session_res->url.find("local-verification://start?") != std::string::npos);
+    BOOST_CHECK(session_res->url.find("required_fields=full_name%2Cemail%2Ccountry%2Cage%2Cowner_name") != std::string::npos);
+    BOOST_CHECK(session_res->url.find("auto_hash_fields=full_name%2Cemail") != std::string::npos);
+
+    TestUnloadWallet(context, std::move(wallet));
+}
+
 BOOST_FIXTURE_TEST_CASE(importmulti_rescan, TestChain100Setup)
 {
     // Cap last block file size, and mine new block in a new block file.

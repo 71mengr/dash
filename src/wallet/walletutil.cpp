@@ -94,7 +94,7 @@ KYCProviderType ParseKYCProvider(const std::string& provider_str, std::string& e
     
     // Check if provider is available in this build
     if (type == KYCProviderType::COINFIRM) {
-        // Coinfirm is always available as it's Dash's partner
+        // Coinfirm is always available as an external provider
         return type;
     }
     
@@ -107,19 +107,9 @@ KYCProviderType ParseKYCProvider(const std::string& provider_str, std::string& e
     if (type == KYCProviderType::JUMIO) return type;
 #endif
     
-    if (type == KYCProviderType::CUSTOM_VC || type == KYCProviderType::DIDIT) {
-        // Verifiable Credentials and Didit provider support are always available
+    if (type == KYCProviderType::CUSTOM_VC || type == KYCProviderType::DIDIT || type == KYCProviderType::INTERNAL) {
+        // Local verification, verifiable credentials, and Didit support are always available
         return type;
-    }
-    
-    if (type == KYCProviderType::INTERNAL) {
-        // Internal test provider only available in debug builds
-#ifdef DEBUG
-        return type;
-#else
-        error = "Internal test provider only available in debug builds";
-        return KYCProviderType::NONE;
-#endif
     }
     
     if (type != KYCProviderType::NONE) {
@@ -135,6 +125,7 @@ std::vector<KYCProviderType> GetAvailableKYCProviders()
     std::vector<KYCProviderType> providers;
     
     // Always available
+    providers.push_back(KYCProviderType::INTERNAL);
     providers.push_back(KYCProviderType::COINFIRM);
     providers.push_back(KYCProviderType::CUSTOM_VC);
     providers.push_back(KYCProviderType::DIDIT);
@@ -146,10 +137,6 @@ std::vector<KYCProviderType> GetAvailableKYCProviders()
     
 #ifdef ENABLE_JUMIO
     providers.push_back(KYCProviderType::JUMIO);
-#endif
-    
-#ifdef DEBUG
-    providers.push_back(KYCProviderType::INTERNAL);
 #endif
     
     return providers;
@@ -182,7 +169,8 @@ std::map<std::string, std::string> GetDefaultKYCConfig(KYCProviderType type)
             break;
             
         case KYCProviderType::INTERNAL:
-            config["mock_mode"] = "true";
+            config["mode"] = "production";
+            config["issuer"] = "local-verification";
             break;
 
         case KYCProviderType::DIDIT:

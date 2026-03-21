@@ -34,6 +34,7 @@ class WalletCredentialTest(BitcoinTestFramework):
         assert "verification_session" in onboarding
         assert onboarding["verification_session"]["session_id"]
         assert onboarding["verification_session"]["verification_url"]
+        assert onboarding["verification_session"]["verification_url"].startswith("local-verification://start?")
         assert_equal(onboarding["verification_session"]["status"], "pending")
 
         flow_wallet = self.nodes[0].get_wallet_rpc("flow_wallet")

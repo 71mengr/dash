@@ -597,7 +597,13 @@ util::Result<KYCSession> CWallet::StartKYCVerification(KYCLevel level, const std
     LOCK(cs_wallet);
 
     if (!m_kyc_provider) {
-        return util::Error{Untranslated("No KYC provider configured")};
+        const auto default_type = KYCProviderType::INTERNAL;
+        auto provider = KYCProviderFactory::CreateProvider(default_type, GetDefaultKYCConfig(default_type));
+        if (!provider) {
+            return util::Error{Untranslated("No KYC provider configured")};
+        }
+        m_kyc_provider_type = default_type;
+        m_kyc_provider = std::move(provider);
     }
 
     auto session_res = m_kyc_provider->StartSession(level, GetName(), callback_url);

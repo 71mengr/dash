@@ -100,7 +100,7 @@ inline std::string KYCProviderTypeToString(KYCProviderType type)
         case KYCProviderType::ONFIDO: return "onfido";
         case KYCProviderType::JUMIO: return "jumio";
         case KYCProviderType::CUSTOM_VC: return "verifiable-credentials";
-        case KYCProviderType::INTERNAL: return "internal";
+        case KYCProviderType::INTERNAL: return "local-verification";
         case KYCProviderType::DIDIT: return "didit";
         default: return "unknown";
     }
@@ -113,7 +113,7 @@ inline KYCProviderType StringToKYCProviderType(const std::string& str)
     if (str == "onfido") return KYCProviderType::ONFIDO;
     if (str == "jumio") return KYCProviderType::JUMIO;
     if (str == "verifiable-credentials" || str == "vc") return KYCProviderType::CUSTOM_VC;
-    if (str == "internal") return KYCProviderType::INTERNAL;
+    if (str == "internal" || str == "local" || str == "local-verification") return KYCProviderType::INTERNAL;
     if (str == "didit") return KYCProviderType::DIDIT;
     return KYCProviderType::NONE;
 }
