@@ -87,7 +87,7 @@ static std::string HashAttributeHex(const std::string& value)
     if (value.empty()) {
         return {};
     }
-    const auto hash = Hash(value.begin(), value.end());
+    const auto hash = Hash(value);
     return hash.GetHex();
 }
 
