@@ -453,9 +453,9 @@ static RPCHelpMan localverify()
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Country must be a supported real country name");
     }
 
-    const std::string full_name_hash = Hash(full_name.begin(), full_name.end()).GetHex();
+    const std::string full_name_hash = Hash(full_name).GetHex();
     const std::string wallet_name = pwallet->GetName();
-    const std::string wallet_name_hash = Hash(wallet_name.begin(), wallet_name.end()).GetHex();
+    const std::string wallet_name_hash = Hash(wallet_name).GetHex();
     const std::string credential_str = strprintf(
         "{\"issuer\":\"local-verification\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
         "\"credentialSubject\":{\"full_name\":\"%s\",\"full_name_hash\":\"%s\",\"email\":\"%s\",\"email_hash\":\"%s\","
