@@ -107,8 +107,8 @@ KYCProviderType ParseKYCProvider(const std::string& provider_str, std::string& e
     if (type == KYCProviderType::JUMIO) return type;
 #endif
     
-    if (type == KYCProviderType::CUSTOM_VC) {
-        // Verifiable Credentials support is always available
+    if (type == KYCProviderType::CUSTOM_VC || type == KYCProviderType::DIDIT) {
+        // Verifiable Credentials and Didit provider support are always available
         return type;
     }
     
@@ -137,6 +137,7 @@ std::vector<KYCProviderType> GetAvailableKYCProviders()
     // Always available
     providers.push_back(KYCProviderType::COINFIRM);
     providers.push_back(KYCProviderType::CUSTOM_VC);
+    providers.push_back(KYCProviderType::DIDIT);
     
     // Optional providers based on build flags
 #ifdef ENABLE_ONFIDO
@@ -182,6 +183,11 @@ std::map<std::string, std::string> GetDefaultKYCConfig(KYCProviderType type)
             
         case KYCProviderType::INTERNAL:
             config["mock_mode"] = "true";
+            break;
+
+        case KYCProviderType::DIDIT:
+            config["base_url"] = "https://verification.didit.me";
+            config["timeout"] = "30";
             break;
             
         default:

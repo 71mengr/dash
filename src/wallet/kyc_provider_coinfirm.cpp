@@ -53,6 +53,32 @@ static std::string KYCLevelToProviderString(KYCLevel level)
 
 } // namespace
 
+
+static std::string DiditDecisionToSessionStatus(const std::string& decision)
+{
+    if (decision == "approved" || decision == "completed") return "completed";
+    if (decision == "declined" || decision == "rejected") return "failed";
+    if (decision == "expired") return "expired";
+    return "pending";
+}
+
+static std::string MapKYCLevelToDiditFlow(KYCLevel level)
+{
+    switch (level) {
+        case KYCLevel::BASIC_LEVEL:
+            return "basic-kyc";
+        case KYCLevel::ADVANCED_LEVEL:
+            return "document-check";
+        case KYCLevel::FULL_LEVEL:
+            return "document-liveness";
+        case KYCLevel::CORPORATE_LEVEL:
+            return "business-verification";
+        case KYCLevel::NONE:
+            break;
+    }
+    return "unknown";
+}
+
 struct CoinfirmProvider::Impl {
     std::string api_key;
     std::string api_secret;
@@ -134,6 +160,98 @@ struct CoinfirmProvider::Impl {
         KYCSession session = it->second;
         if (session.status == "pending" && session.expires_at > 0 && GetTime() > session.expires_at) {
             session.status = "expired";
+        }
+        return session;
+    }
+};
+
+
+struct DiditProvider::Impl {
+    std::string api_key;
+    std::string workflow_id;
+    std::string webhook_secret;
+    std::string base_url{"https://verification.didit.me"};
+    std::map<std::string, KYCSession> sessions;
+
+    Impl(const std::string& key,
+         const std::string& workflow,
+         const std::string& webhook,
+         const std::string& url)
+        : api_key(key), workflow_id(workflow), webhook_secret(webhook)
+    {
+        if (!url.empty()) {
+            base_url = url;
+        }
+    }
+
+    std::string BuildVerificationUrl(const KYCSession& session,
+                                     const std::string& wallet_name,
+                                     const std::string& callback_url) const
+    {
+        std::vector<std::pair<std::string, std::string>> params{
+            {"session_id", session.session_id},
+            {"workflow_id", workflow_id},
+            {"vendor_data", wallet_name},
+            {"kyc_level", KYCLevelToProviderString(session.level)},
+            {"flow", MapKYCLevelToDiditFlow(session.level)},
+        };
+
+        if (!callback_url.empty()) {
+            params.emplace_back("callback", callback_url);
+        }
+
+        std::string url = base_url + "/v3/session/";
+        url += '?';
+
+        bool first = true;
+        for (const auto& [key, value] : params) {
+            if (!first) {
+                url += '&';
+            }
+            first = false;
+            url += UrlEncode(key);
+            url += '=';
+            url += UrlEncode(value);
+        }
+
+        return url;
+    }
+
+    util::Result<KYCSession> StartSession(
+        KYCLevel level,
+        const std::string& wallet_name,
+        const std::string& callback_url)
+    {
+        KYCSession session;
+        session.session_id = "didit_" + GetRandHash().ToString().substr(0, 16);
+        session.provider = KYCProviderType::DIDIT;
+        session.level = level;
+        session.created_at = GetTime();
+        session.expires_at = session.created_at + 24 * 60 * 60;
+        session.status = "pending";
+        session.url = BuildVerificationUrl(session, wallet_name, callback_url);
+
+        sessions[session.session_id] = session;
+        return session;
+    }
+
+    util::Result<KYCSession> CheckSession(const std::string& session_id) const
+    {
+        const auto it = sessions.find(session_id);
+        if (it == sessions.end()) {
+            return util::Error{_("Session not found")};
+        }
+
+        KYCSession session = it->second;
+        session.status = DiditDecisionToSessionStatus(session.status);
+        if (session.status == "pending" && session.expires_at > 0 && GetTime() > session.expires_at) {
+            session.status = "expired";
+        }
+        if (session.status == "completed" && session.credential.empty()) {
+            const std::string credential_json = strprintf(
+                "{\"issuer\":\"didit\",\"session_id\":\"%s\",\"decision\":\"approved\"}",
+                session.session_id.c_str());
+            session.credential.assign(credential_json.begin(), credential_json.end());
         }
         return session;
     }
@@ -251,6 +369,80 @@ std::vector<KYCLevel> CoinfirmProvider::GetSupportedLevels() const
     return {KYCLevel::BASIC_LEVEL, KYCLevel::ADVANCED_LEVEL, KYCLevel::FULL_LEVEL};
 }
 
+
+DiditProvider::DiditProvider(const std::string& api_key,
+                             const std::string& workflow_id,
+                             const std::string& webhook_secret,
+                             const std::string& base_url)
+    : m_impl(std::make_unique<Impl>(api_key, workflow_id, webhook_secret, base_url)) {}
+
+DiditProvider::~DiditProvider() = default;
+
+util::Result<KYCSession> DiditProvider::StartSession(KYCLevel level,
+                                                     const std::string& wallet_name,
+                                                     const std::string& callback_url)
+{
+    LogPrintf("DiditProvider::StartSession - level=%d, wallet=%s, callback=%s\n",
+              static_cast<int>(level), wallet_name, callback_url);
+    return m_impl->StartSession(level, wallet_name, callback_url);
+}
+
+util::Result<KYCSession> DiditProvider::CheckSession(const std::string& session_id)
+{
+    LogPrintf("DiditProvider::CheckSession - session=%s\n", session_id);
+    return m_impl->CheckSession(session_id);
+}
+
+util::Result<std::vector<unsigned char>> DiditProvider::GetCredential(const std::string& session_id)
+{
+    auto session_res = CheckSession(session_id);
+    if (!session_res) {
+        return util::Error{util::ErrorString(session_res)};
+    }
+
+    const auto& session = *session_res;
+    if (session.status != "completed" || session.credential.empty()) {
+        return util::Error{_("Credential not available for session")};
+    }
+
+    return session.credential;
+}
+
+bool DiditProvider::VerifyCredential(const std::vector<unsigned char>& credential,
+                                     CCredentialMetadata& metadata)
+{
+    CWalletCredential parsed_credential;
+    if (!parsed_credential.SetCredential(credential)) {
+        return false;
+    }
+
+    metadata = parsed_credential.GetMetadata();
+    if (metadata.credentialHash.IsNull()) {
+        metadata.credentialHash = Hash(credential);
+    }
+
+    if (metadata.nExpiresAt > 0 && GetTime() > metadata.nExpiresAt) {
+        return false;
+    }
+
+    return IsIssuerTrusted(metadata.issuer);
+}
+
+bool DiditProvider::IsIssuerTrusted(const std::string& issuer_did)
+{
+    return issuer_did == "didit" || issuer_did.find("did:didit:") == 0;
+}
+
+std::vector<KYCLevel> DiditProvider::GetSupportedLevels() const
+{
+    return {
+        KYCLevel::BASIC_LEVEL,
+        KYCLevel::ADVANCED_LEVEL,
+        KYCLevel::FULL_LEVEL,
+        KYCLevel::CORPORATE_LEVEL,
+    };
+}
+
 VerifiableCredentialProvider::VerifiableCredentialProvider()
     : m_impl(std::make_unique<Impl>())
 {
@@ -355,6 +547,20 @@ std::unique_ptr<KYCProvider> KYCProviderFactory::CreateProvider(
         }
         case KYCProviderType::CUSTOM_VC:
             return std::make_unique<VerifiableCredentialProvider>();
+        case KYCProviderType::DIDIT: {
+            auto api_key = config.find("api_key");
+            auto workflow_id = config.find("workflow_id");
+            if (api_key == config.end() || workflow_id == config.end()) {
+                return nullptr;
+            }
+            const auto webhook_secret = config.find("webhook_secret");
+            const auto base_url = config.find("base_url");
+            return std::make_unique<DiditProvider>(
+                api_key->second,
+                workflow_id->second,
+                webhook_secret == config.end() ? std::string{} : webhook_secret->second,
+                base_url == config.end() ? std::string{} : base_url->second);
+        }
         default:
             return nullptr;
     }
@@ -364,7 +570,8 @@ std::vector<KYCProviderType> KYCProviderFactory::GetAvailableProviders()
 {
     return {
         KYCProviderType::COINFIRM,
-        KYCProviderType::CUSTOM_VC
+        KYCProviderType::CUSTOM_VC,
+        KYCProviderType::DIDIT,
     };
 }
 

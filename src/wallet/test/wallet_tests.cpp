@@ -256,6 +256,32 @@ BOOST_FIXTURE_TEST_CASE(kyc_provider_uses_imported_credentials_instead_of_mock_c
     TestUnloadWallet(context, std::move(wallet));
 }
 
+BOOST_FIXTURE_TEST_CASE(kyc_provider_supports_didit_sessions, WalletTestingSetup)
+{
+    WalletContext context;
+    context.args = &m_args;
+    context.chain = m_node.chain.get();
+    context.coinjoin_loader = m_node.coinjoin_loader.get();
+    auto wallet = TestLoadWallet(context);
+    BOOST_REQUIRE(wallet);
+
+    std::map<std::string, std::string> config{
+        {"api_key", "didit-api-key"},
+        {"workflow_id", "workflow-123"},
+    };
+    BOOST_CHECK(wallet->SetKYCProvider(KYCProviderType::DIDIT, config));
+
+    auto session_res = wallet->StartKYCVerification(KYCLevel::ADVANCED_LEVEL, "https://callback.example/didit");
+    BOOST_REQUIRE(session_res);
+    BOOST_CHECK_EQUAL(session_res->provider, KYCProviderType::DIDIT);
+    BOOST_CHECK_EQUAL(session_res->status, "pending");
+    BOOST_CHECK(session_res->url.find("verification.didit.me/v3/session/") != std::string::npos);
+    BOOST_CHECK(session_res->url.find("workflow_id=workflow-123") != std::string::npos);
+    BOOST_CHECK(session_res->url.find("kyc_level=advanced") != std::string::npos);
+
+    TestUnloadWallet(context, std::move(wallet));
+}
+
 BOOST_FIXTURE_TEST_CASE(importmulti_rescan, TestChain100Setup)
 {
     // Cap last block file size, and mine new block in a new block file.

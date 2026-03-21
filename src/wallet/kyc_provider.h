@@ -112,6 +112,38 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
+class DiditProvider : public KYCProvider
+{
+public:
+    DiditProvider(const std::string& api_key,
+                  const std::string& workflow_id,
+                  const std::string& webhook_secret = "",
+                  const std::string& base_url = "https://verification.didit.me");
+    ~DiditProvider() override;
+
+    KYCProviderType GetType() const override { return KYCProviderType::DIDIT; }
+    std::string GetName() const override { return "Didit"; }
+
+    util::Result<KYCSession> StartSession(KYCLevel level,
+                                           const std::string& wallet_name,
+                                           const std::string& callback_url) override;
+
+    util::Result<KYCSession> CheckSession(const std::string& session_id) override;
+
+    util::Result<std::vector<unsigned char>> GetCredential(const std::string& session_id) override;
+
+    bool VerifyCredential(const std::vector<unsigned char>& credential,
+                           CCredentialMetadata& metadata) override;
+
+    bool IsIssuerTrusted(const std::string& issuer_did) override;
+
+    std::vector<KYCLevel> GetSupportedLevels() const override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
 // Verifiable Credentials provider (DID-based)
 class VerifiableCredentialProvider : public KYCProvider
 {

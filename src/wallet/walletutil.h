@@ -87,7 +87,8 @@ enum class KYCProviderType : uint8_t {
     ONFIDO = 2,        // Popular KYC provider
     JUMIO = 3,         // Another major provider
     CUSTOM_VC = 4,     // Verifiable Credentials (DID)
-    INTERNAL = 5       // Internal test provider
+    INTERNAL = 5,      // Internal test provider
+    DIDIT = 6          // Didit identity verification
 };
 
 // Convert KYCProviderType to string
@@ -100,6 +101,7 @@ inline std::string KYCProviderTypeToString(KYCProviderType type)
         case KYCProviderType::JUMIO: return "jumio";
         case KYCProviderType::CUSTOM_VC: return "verifiable-credentials";
         case KYCProviderType::INTERNAL: return "internal";
+        case KYCProviderType::DIDIT: return "didit";
         default: return "unknown";
     }
 }
@@ -112,6 +114,7 @@ inline KYCProviderType StringToKYCProviderType(const std::string& str)
     if (str == "jumio") return KYCProviderType::JUMIO;
     if (str == "verifiable-credentials" || str == "vc") return KYCProviderType::CUSTOM_VC;
     if (str == "internal") return KYCProviderType::INTERNAL;
+    if (str == "didit") return KYCProviderType::DIDIT;
     return KYCProviderType::NONE;
 }
 

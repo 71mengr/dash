@@ -111,9 +111,9 @@ static RPCHelpMan setkycprovider()
     return RPCHelpMan{"setkycprovider",
         "\nConfigure the KYC provider for this wallet.\n",
         {
-            {"provider", RPCArg::Type::STR, RPCArg::Optional::NO, "Provider name (coinfirm, vc)"},
+            {"provider", RPCArg::Type::STR, RPCArg::Optional::NO, "Provider name (coinfirm, vc, didit)"},
             {"api_key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "API key for provider"},
-            {"api_secret", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "API secret for provider"},
+            {"provider_arg", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Provider-specific second argument: Coinfirm API secret or Didit workflow ID"},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -123,7 +123,7 @@ static RPCHelpMan setkycprovider()
             }
         },
         RPCExamples{
-            HelpExampleCli("setkycprovider", "coinfirm my_api_key my_api_secret")
+            HelpExampleCli("setkycprovider", "didit my_api_key my_workflow_id")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -132,22 +132,22 @@ static RPCHelpMan setkycprovider()
     EnsureCredentialTestingChain("setkycprovider");
 
     std::string provider_str = request.params[0].get_str();
-    KYCProviderType type;
-    
-    if (provider_str == "coinfirm") {
-        type = KYCProviderType::COINFIRM;
-    } else if (provider_str == "vc") {
-        type = KYCProviderType::CUSTOM_VC;
-    } else {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown provider. Use 'coinfirm' or 'vc'");
+    std::string error;
+    KYCProviderType type = ParseKYCProvider(provider_str, error);
+    if (type == KYCProviderType::NONE && provider_str != "none") {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, error.empty() ? "Unknown provider" : error);
     }
-    
+
     std::map<std::string, std::string> config;
     if (!request.params[1].isNull()) {
         config["api_key"] = request.params[1].get_str();
     }
     if (!request.params[2].isNull()) {
-        config["api_secret"] = request.params[2].get_str();
+        if (type == KYCProviderType::COINFIRM) {
+            config["api_secret"] = request.params[2].get_str();
+        } else if (type == KYCProviderType::DIDIT) {
+            config["workflow_id"] = request.params[2].get_str();
+        }
     }
     
     bool success = pwallet->SetKYCProvider(type, config);
