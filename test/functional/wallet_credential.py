@@ -23,6 +23,30 @@ class WalletCredentialTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
 
     def run_test(self):
+        self.log.info("Create a wallet and immediately start the verification flow")
+        onboarding = self.nodes[0].createwallet(
+            wallet_name="flow_wallet",
+            require_verification=True,
+            kyc_level="basic",
+            kyc_callback_url="https://callback.example/kyc",
+        )
+        assert_equal(onboarding["name"], "flow_wallet")
+        assert "verification_session" in onboarding
+        assert onboarding["verification_session"]["session_id"]
+        assert onboarding["verification_session"]["verification_url"]
+        assert_equal(onboarding["verification_session"]["status"], "pending")
+
+        flow_wallet = self.nodes[0].get_wallet_rpc("flow_wallet")
+        flow_info = flow_wallet.getwalletinfo()["verification"]
+        assert_equal(flow_info["status"], "pending")
+        assert_equal(flow_info["is_verified"], False)
+        assert_equal(flow_info["can_generate_addresses"], False)
+        assert_raises_rpc_error(
+            -4,
+            "Cannot generate new address: KYC verification is still pending",
+            flow_wallet.getnewaddress,
+        )
+
         self.log.info("Create a wallet that explicitly requires verification")
         self.nodes[0].createwallet(wallet_name="verified_only", require_verification=True)
         wallet = self.nodes[0].get_wallet_rpc("verified_only")

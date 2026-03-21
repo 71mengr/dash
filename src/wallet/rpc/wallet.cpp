@@ -924,12 +924,21 @@ static RPCHelpMan createwallet()
             {"load_on_startup", RPCArg::Type::BOOL, RPCArg::Optional::OMITTED_NAMED_ARG, "Save wallet name to persistent settings and load on startup. True to add wallet to startup list, false to remove, null to leave unchanged."},
             {"external_signer", RPCArg::Type::BOOL, RPCArg::Default{false}, "Use an external signer such as a hardware wallet. Requires -signer to be configured. Wallet creation will fail if keys cannot be fetched. Requires disable_private_keys and descriptors set to true."},
             {"require_verification", RPCArg::Type::BOOL, RPCArg::Default{false}, "Require KYC verification before allowing address generation."},
+            {"kyc_level", RPCArg::Type::STR, RPCArg::Default{""}, "Optional KYC level to start immediately after wallet creation when require_verification is true. One of: \"basic\", \"advanced\", \"full\"."},
+            {"kyc_callback_url", RPCArg::Type::STR, RPCArg::Default{""}, "Optional callback URL to use when starting KYC immediately after wallet creation."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
             {
                 {RPCResult::Type::STR, "name", "The wallet name if created successfully. If the wallet was created using a full path, the wallet_name will be the full path."},
                 {RPCResult::Type::STR, "warning", "Warning message if wallet was not loaded cleanly."},
+                {RPCResult::Type::OBJ, "verification_session", /*optional=*/true, "KYC session details if a verification flow was started automatically after wallet creation.",
+                {
+                    {RPCResult::Type::STR, "session_id", "KYC session ID"},
+                    {RPCResult::Type::STR, "verification_url", "URL to complete KYC"},
+                    {RPCResult::Type::STR, "status", "Session status"},
+                    {RPCResult::Type::NUM_TIME, "expires_at", "Expiration timestamp"},
+                }},
             }
         },
         RPCExamples{
@@ -981,9 +990,15 @@ static RPCHelpMan createwallet()
 #endif
     }
 
-bool require_verification = !request.params[8].isNull() && request.params[8].get_bool();
+    bool require_verification = !request.params[8].isNull() && request.params[8].get_bool();
     if (require_verification) {
         flags |= WALLET_FLAG_REQUIRE_VERIFICATION;
+    }
+
+    const std::string kyc_level = request.params[9].isNull() ? "" : request.params[9].get_str();
+    const std::string kyc_callback_url = request.params[10].isNull() ? "" : request.params[10].get_str();
+    if (!kyc_level.empty() && !require_verification) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "The createwallet RPC requires require_verification=true when kyc_level is provided.");
     }
 #ifndef USE_BDB
     if (!(flags & WALLET_FLAG_DESCRIPTORS)) {
@@ -1008,6 +1023,33 @@ bool require_verification = !request.params[8].isNull() && request.params[8].get
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("name", wallet->GetName());
     obj.pushKV("warning", Join(warnings, Untranslated("\n")).original);
+
+    if (!kyc_level.empty()) {
+        EnsureCredentialTestingChain("createwallet");
+
+        KYCLevel level;
+        if (kyc_level == "basic") {
+            level = KYCLevel::BASIC_LEVEL;
+        } else if (kyc_level == "advanced") {
+            level = KYCLevel::ADVANCED_LEVEL;
+        } else if (kyc_level == "full") {
+            level = KYCLevel::FULL_LEVEL;
+        } else {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid kyc_level. Use 'basic', 'advanced', or 'full'");
+        }
+
+        auto session_res = wallet->StartKYCVerification(level, kyc_callback_url);
+        if (!session_res) {
+            throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(session_res).original);
+        }
+
+        UniValue verification_session(UniValue::VOBJ);
+        verification_session.pushKV("session_id", session_res->session_id);
+        verification_session.pushKV("verification_url", session_res->url);
+        verification_session.pushKV("status", session_res->status);
+        verification_session.pushKV("expires_at", session_res->expires_at);
+        obj.pushKV("verification_session", verification_session);
+    }
 
     return obj;
 },
