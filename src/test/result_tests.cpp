@@ -51,6 +51,12 @@ util::Result<NoCopy> NoCopyFn(int i, bool success)
     return util::Error{Untranslated(strprintf("nocopy %i error.", i))};
 }
 
+util::Result<void> VoidFn(bool success)
+{
+    if (success) return {};
+    return util::Error{Untranslated("void error.")};
+}
+
 template <typename T>
 void ExpectResult(const util::Result<T>& result, bool success, const bilingual_str& str)
 {
@@ -82,6 +88,8 @@ BOOST_AUTO_TEST_CASE(check_returned)
     ExpectFail(NoCopyFn(5, false), Untranslated("nocopy 5 error."));
     ExpectSuccess(StrFn(Untranslated("S"), true), {}, Untranslated("S"));
     ExpectFail(StrFn(Untranslated("S"), false), Untranslated("str S error."));
+    ExpectResult(VoidFn(true), true, {});
+    ExpectResult(VoidFn(false), false, Untranslated("void error."));
 }
 
 BOOST_AUTO_TEST_CASE(check_value_or)

@@ -8,6 +8,7 @@
 #include <attributes.h>
 #include <util/translation.h>
 
+#include <optional>
 #include <variant>
 
 namespace util {
@@ -74,10 +75,35 @@ public:
     T& operator*() LIFETIMEBOUND { return value(); }
 };
 
+template <>
+class Result<void>
+{
+private:
+    std::optional<bilingual_str> m_error;
+
+    friend bilingual_str ErrorString(const Result<void>& result);
+
+public:
+    Result() = default;
+    Result(Error error) : m_error{std::move(error.message)} {}
+
+    bool has_value() const noexcept { return !m_error.has_value(); }
+    void value() const
+    {
+        assert(has_value());
+    }
+    explicit operator bool() const noexcept { return has_value(); }
+};
+
 template <typename T>
 bilingual_str ErrorString(const Result<T>& result)
 {
     return result ? bilingual_str{} : std::get<0>(result.m_variant);
+}
+
+inline bilingual_str ErrorString(const Result<void>& result)
+{
+    return result ? bilingual_str{} : *result.m_error;
 }
 } // namespace util
 
