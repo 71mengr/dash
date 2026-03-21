@@ -48,6 +48,15 @@ class WalletCredentialTest(BitcoinTestFramework):
             flow_wallet.getnewaddress,
         )
 
+        self.log.info("Use the production local verification flow and confirm it returns a wallet address")
+        local_result = flow_wallet.local_verify("Ada Lovelace", 36, "United Kingdom")
+        assert_equal(local_result["success"], True)
+        assert_equal(local_result["wallet_verified"], True)
+        assert_equal(local_result["wallet_name"], "flow_wallet")
+        assert local_result["wallet_address"]
+        assert_equal(flow_wallet.getaddressinfo(local_result["wallet_address"])["ismine"], True)
+
+
         self.log.info("Create a wallet that explicitly requires verification")
         self.nodes[0].createwallet(wallet_name="verified_only", require_verification=True)
         wallet = self.nodes[0].get_wallet_rpc("verified_only")

@@ -177,7 +177,7 @@ static RPCHelpMan setkycprovider()
     return RPCHelpMan{"setkycprovider",
         "\nConfigure the KYC provider for this wallet.\n",
         {
-            {"provider", RPCArg::Type::STR, RPCArg::Optional::NO, "Provider name (coinfirm, vc, didit)"},
+            {"provider", RPCArg::Type::STR, RPCArg::Optional::NO, "Provider name (local-verification, coinfirm, vc, didit)"},
             {"api_key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "API key for provider"},
             {"provider_arg", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Provider-specific second argument: Coinfirm API secret or Didit workflow ID"},
         },
@@ -195,8 +195,6 @@ static RPCHelpMan setkycprovider()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("setkycprovider");
-
     std::string provider_str = request.params[0].get_str();
     std::string error;
     KYCProviderType type = ParseKYCProvider(provider_str, error);
@@ -251,8 +249,6 @@ static RPCHelpMan startkyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("startkyc");
-
     std::string level_str = request.params[0].get_str();
     KYCLevel level;
     
@@ -309,8 +305,6 @@ static RPCHelpMan checkkyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("checkkyc");
-
     std::string session_id = request.params[0].get_str();
     
     auto session_res = pwallet->CheckKYCStatus(session_id);
@@ -352,8 +346,6 @@ static RPCHelpMan completekyc()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("completekyc");
-
     std::string session_id = request.params[0].get_str();
     
     bool success = pwallet->CompleteKYCVerification(session_id);
@@ -389,8 +381,6 @@ static RPCHelpMan importkyccredential()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("importkyccredential");
-
     const std::string credential_str = request.params[0].get_str();
     const std::string session_id = request.params[1].isNull() ? "" : request.params[1].get_str();
 
@@ -409,7 +399,7 @@ static RPCHelpMan localverify()
 {
     return RPCHelpMan{"local-verify",
         "\nRun local verification for the wallet using the provided identity fields.\n"
-        "\nThis RPC is only available on mockable test chains and marks the wallet as verified after the checks pass.\n",
+        "\nThis is the built-in production verification flow. After the checks pass, the wallet is marked verified and a primary wallet address is created.\n",
         {
             {"full_name", RPCArg::Type::STR, RPCArg::Optional::NO, "Full legal name. Must contain at least two words and only letters, spaces, apostrophes, periods, or hyphens."},
             {"age", RPCArg::Type::NUM, RPCArg::Optional::NO, "Age in years. Must be between 18 and 120."},
@@ -423,6 +413,8 @@ static RPCHelpMan localverify()
                 {RPCResult::Type::STR, "full_name", "Normalized full name"},
                 {RPCResult::Type::NUM, "age", "Validated age"},
                 {RPCResult::Type::STR, "country", "Normalized country"},
+                {RPCResult::Type::STR, "wallet_name", "Wallet name that was verified"},
+                {RPCResult::Type::STR, "wallet_address", "Primary wallet address generated after successful verification"},
                 {RPCResult::Type::ARR, "allowed_countries", "Supported countries for the country check",
                     {
                         {RPCResult::Type::STR, "", "Country name"},
@@ -437,8 +429,6 @@ static RPCHelpMan localverify()
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
-    EnsureCredentialTestingChain("local-verify");
-
     const std::string full_name = NormalizeLocalVerificationValue(request.params[0].get_str());
     if (full_name.size() < 5) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Full name must be at least 5 characters long");
@@ -509,12 +499,19 @@ static RPCHelpMan localverify()
         allowed_countries.push_back(valid_country);
     }
 
+    const auto destination = pwallet->GetNewDestination("");
+    if (!destination) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(destination).original);
+    }
+
     UniValue result(UniValue::VOBJ);
     result.pushKV("success", true);
     result.pushKV("wallet_verified", pwallet->IsVerified());
     result.pushKV("full_name", full_name);
     result.pushKV("age", age);
     result.pushKV("country", country);
+    result.pushKV("wallet_name", pwallet->GetName());
+    result.pushKV("wallet_address", EncodeDestination(*destination));
     result.pushKV("allowed_countries", std::move(allowed_countries));
     return result;
 },
@@ -1207,8 +1204,6 @@ static RPCHelpMan createwallet()
     obj.pushKV("warning", Join(warnings, Untranslated("\n")).original);
 
     if (!kyc_level.empty()) {
-        EnsureCredentialTestingChain("createwallet");
-
         KYCLevel level;
         if (kyc_level == "basic") {
             level = KYCLevel::BASIC_LEVEL;

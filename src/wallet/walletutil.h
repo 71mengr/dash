@@ -87,7 +87,7 @@ enum class KYCProviderType : uint8_t {
     ONFIDO = 2,        // Popular KYC provider
     JUMIO = 3,         // Another major provider
     CUSTOM_VC = 4,     // Verifiable Credentials (DID)
-    INTERNAL = 5,      // Internal test provider
+    INTERNAL = 5,      // Built-in local verification provider
     DIDIT = 6          // Didit identity verification
 };
 

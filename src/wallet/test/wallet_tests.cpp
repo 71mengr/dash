@@ -326,6 +326,8 @@ BOOST_FIXTURE_TEST_CASE(local_verify_rpc_marks_wallet_verified_and_allows_addres
     BOOST_CHECK(response.find_value("success").get_bool());
     BOOST_CHECK(response.find_value("wallet_verified").get_bool());
     BOOST_CHECK_EQUAL(response.find_value("country").get_str(), "UNITED KINGDOM");
+    BOOST_CHECK_EQUAL(response.find_value("wallet_name").get_str(), wallet->GetName());
+    BOOST_CHECK(!response.find_value("wallet_address").get_str().empty());
     BOOST_CHECK(wallet->IsVerified());
 
     request.params.clear();
