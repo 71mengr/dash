@@ -126,6 +126,15 @@ std::shared_ptr<const CBlock> MinerTestingSetup::BadBlock(const uint256& prev_ha
     return ret;
 }
 
+static CTransactionRef CreateCoinstakeTx(const uint256& prevout_hash)
+{
+    CMutableTransaction coinstake_tx;
+    coinstake_tx.vin.push_back(CTxIn(COutPoint(prevout_hash, 0)));
+    coinstake_tx.vout.emplace_back(0, CScript{});
+    coinstake_tx.vout.emplace_back(1 * COIN, P2SH_OP_TRUE);
+    return MakeTransactionRef(std::move(coinstake_tx));
+}
+
 void MinerTestingSetup::BuildChain(const uint256& root, int height, const unsigned int invalid_rate, const unsigned int branch_rate, const unsigned int max_size, std::vector<std::shared_ptr<const CBlock>>& blocks)
 {
     if (height <= 0 || blocks.size() >= max_size) return;
@@ -200,6 +209,52 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
 
     LOCK(cs_main);
     BOOST_CHECK_EQUAL(sub->m_expected_tip, m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+}
+
+BOOST_AUTO_TEST_CASE(checkblock_rejects_coinstake_when_disabled)
+{
+    auto block = Block(Params().GenesisBlock().GetHash());
+    block->vtx.push_back(CreateCoinstakeTx(block->vtx[0]->GetHash()));
+    block->hashMerkleRoot = BlockMerkleRoot(*block);
+
+    BlockValidationState state;
+    const bool checked = CheckBlock(*block, state, Params().GetConsensus(), /*fCheckPOW=*/false, /*fCheckMerkleRoot=*/true);
+    BOOST_CHECK(!checked);
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-cs-disabled");
+}
+
+BOOST_AUTO_TEST_CASE(checkblock_accepts_pos_layout_when_enabled)
+{
+    auto block = Block(Params().GenesisBlock().GetHash());
+    block->vtx.push_back(CreateCoinstakeTx(block->vtx[0]->GetHash()));
+    block->hashMerkleRoot = BlockMerkleRoot(*block);
+
+    auto consensus = Params().GetConsensus();
+    consensus.fProofOfStakeEnabled = true;
+
+    BlockValidationState state;
+    const bool checked = CheckBlock(*block, state, consensus, /*fCheckPOW=*/false, /*fCheckMerkleRoot=*/true);
+    BOOST_CHECK(checked);
+}
+
+BOOST_AUTO_TEST_CASE(checkblock_requires_coinstake_to_be_second)
+{
+    auto block = Block(Params().GenesisBlock().GetHash());
+
+    CMutableTransaction regular_tx;
+    regular_tx.vin.push_back(CTxIn(COutPoint(block->vtx[0]->GetHash(), 0)));
+    regular_tx.vout.emplace_back(1 * COIN, P2SH_OP_TRUE);
+    block->vtx.push_back(MakeTransactionRef(std::move(regular_tx)));
+    block->vtx.push_back(CreateCoinstakeTx(block->vtx[0]->GetHash()));
+    block->hashMerkleRoot = BlockMerkleRoot(*block);
+
+    auto consensus = Params().GetConsensus();
+    consensus.fProofOfStakeEnabled = true;
+
+    BlockValidationState state;
+    const bool checked = CheckBlock(*block, state, consensus, /*fCheckPOW=*/false, /*fCheckMerkleRoot=*/true);
+    BOOST_CHECK(!checked);
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-cs-position");
 }
 
 /**

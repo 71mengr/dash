@@ -4006,12 +4006,24 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
     if (block.vtx.empty() || block.vtx.size() > MaxBlockSize() || ::GetSerializeSize(block, PROTOCOL_VERSION) > MaxBlockSize())
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-length", "size limits failed");
 
-    // First transaction must be coinbase, the rest must not be
+    // First transaction must be coinbase. On proof-of-stake networks a single
+    // coinstake transaction may appear in the second position, otherwise the
+    // remaining transactions must not be coinbase/coinstake.
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-missing", "first tx is not coinbase");
-    for (unsigned int i = 1; i < block.vtx.size(); i++)
-        if (block.vtx[i]->IsCoinBase())
+    for (unsigned int i = 1; i < block.vtx.size(); i++) {
+        if (block.vtx[i]->IsCoinBase()) {
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-multiple", "more than one coinbase");
+        }
+        if (block.vtx[i]->IsCoinStake()) {
+            if (!consensusParams.fProofOfStakeEnabled) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cs-disabled", "coinstake not enabled");
+            }
+            if (i != 1) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cs-position", "coinstake must be second");
+            }
+        }
+    }
 
     // Check transactions
     // Must check for duplicate inputs (see CVE-2018-17144)

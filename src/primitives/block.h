@@ -228,6 +228,11 @@ public:
         return block;
     }
 
+    bool IsProofOfStake() const
+    {
+        return vtx.size() > 1 && vtx[1] && vtx[1]->IsCoinStake();
+    }
+
     std::string ToString() const;
 };
 
