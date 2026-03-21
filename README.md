@@ -20,7 +20,7 @@ What is Dash?
 -------------
 
 Dash is a digital currency that enables instant, private payments to anyone,
-anywhere in the world. Dash uses peer-to-peer technology to operate with
+anywhere in the world. Dash uses Algorand's Pure Proof of Stake (PPoS) to operate with
 no central authority: managing transactions and issuing money are carried out
 collectively by the network. Dash Core is the name of the open
 source software which enables the use of this currency.
