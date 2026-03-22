@@ -1540,6 +1540,11 @@ static std::pair<CAmount, CAmount> GetBlockSubsidyHelper(int nPrevBits, int nPre
     return {nSubsidy - nSuperblockPart, nSuperblockPart};
 }
 
+bool IsProofOfStakeEnabled(const Consensus::Params& consensusParams, int nHeight)
+{
+    return consensusParams.fProofOfStakeEnabled && nHeight >= consensusParams.nProofOfStakeHeight;
+}
+
 CAmount GetSuperblockSubsidyInner(int nPrevBits, int nPrevHeight, const Consensus::Params& consensusParams, bool fV20Active)
 {
     const auto [nSubsidy, nSuperblock] = GetBlockSubsidyHelper(nPrevBits, nPrevHeight, consensusParams, fV20Active);
@@ -1557,6 +1562,21 @@ CAmount GetBlockSubsidy(const CBlockIndex* const pindex, const Consensus::Params
     if (pindex->pprev == nullptr) return Params().GenesisBlock().vtx[0]->GetValueOut();
     const bool isV20Active{DeploymentActiveAt(*pindex, consensusParams, Consensus::DEPLOYMENT_V20)};
     return GetBlockSubsidyInner(pindex->pprev->nBits, pindex->pprev->nHeight, consensusParams, isV20Active);
+}
+
+CAmount GetProofOfStakeReward(const CBlockIndex* const pindexPrev, const Consensus::Params& consensusParams)
+{
+    if (pindexPrev == nullptr) {
+        return Params().GenesisBlock().vtx[0]->GetValueOut();
+    }
+
+    const int nHeight = pindexPrev->nHeight + 1;
+    if (!IsProofOfStakeEnabled(consensusParams, nHeight)) {
+        return 0;
+    }
+
+    const bool isV20Active{DeploymentActiveAfter(pindexPrev, consensusParams, Consensus::DEPLOYMENT_V20)};
+    return GetBlockSubsidyInner(pindexPrev->nBits, pindexPrev->nHeight, consensusParams, isV20Active);
 }
 
 CAmount GetMasternodePayment(int nHeight, CAmount blockValue, bool fV20Active)
@@ -3955,8 +3975,9 @@ void CChainState::ReceivedBlockTransactions(const CBlock& block, CBlockIndex* pi
 
 static bool CheckBlockHeader(const CBlockHeader& block, const uint256& hash, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
+    const bool pos_header = consensusParams.fProofOfStakeEnabled && block.nNonce == 0;
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(hash, block.nBits, consensusParams))
+    if (fCheckPOW && !pos_header && !CheckProofOfWork(hash, block.nBits, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     // Check DevNet
@@ -4070,9 +4091,10 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     AssertLockHeld(::cs_main);
     assert(pindexPrev != nullptr);
     const int nHeight = pindexPrev->nHeight + 1;
+    const bool pos_active = IsProofOfStakeEnabled(chainman.GetConsensus(), nHeight);
 
     // Check proof of work
-    if (chainman.GetParams().NetworkIDString() == CBaseChainParams::MAIN && nHeight <= 68589){
+    if (!pos_active && chainman.GetParams().NetworkIDString() == CBaseChainParams::MAIN && nHeight <= 68589){
         // architecture issues with DGW v1 and v2)
         unsigned int nBitsNext = GetNextWorkRequired(pindexPrev, &block, chainman.GetConsensus());
         double n1 = ConvertBitsToDouble(block.nBits);
@@ -4082,10 +4104,14 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
             LogPrintf("ERROR: %s : incorrect proof of work (DGW pre-fork) - %f %f %f at %d\n", __func__, abs(n1-n2), n1, n2, nHeight);
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits");
         }
-    } else {
+    } else if (!pos_active) {
         if (block.nBits != GetNextWorkRequired(pindexPrev, &block, chainman.GetConsensus())) {
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", strprintf("incorrect proof of work at %d", nHeight));
         }
+    } else if (block.nNonce != 0) {
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-pos-nonce", "proof of stake blocks must use a null nonce");
+    } else if ((block.nTime & chainman.GetConsensus().nStakeTimestampMask) != 0) {
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-pos-time", "proof of stake timestamp mask violation");
     }
 
     // Check against checkpoints
@@ -4130,6 +4156,7 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     // TODO: validate - why do we need this cs_main ?
     AssertLockHeld(::cs_main);
     const int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
+    const bool pos_active = IsProofOfStakeEnabled(chainman.GetConsensus(), nHeight);
 
     // Enforce BIP113 (Median Time Past).
     bool enforce_locktime_median_time_past{false};
@@ -4152,6 +4179,14 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
 
     // Check that all transactions are finalized and not over-sized
     // Also count sigops
+    if (pos_active) {
+        if (!block.IsProofOfStake()) {
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-pos-missing", "proof of stake block missing coinstake");
+        }
+    } else if (block.IsProofOfStake()) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-pos-premature", "proof of stake not active");
+    }
+
     unsigned int nSigOps = 0;
     for (const auto& tx : block.vtx) {
         if (!IsFinalTx(*tx, nHeight, nLockTimeCutoff)) {

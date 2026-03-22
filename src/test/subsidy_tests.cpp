@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <chainparams.h>
+#include <pow.h>
 #include <validation.h>
 
 #include <test/util/setup_common.h>
@@ -95,6 +96,39 @@ BOOST_AUTO_TEST_CASE(block_subsidy_test)
     nPrevHeight = 420480;
     nSubsidy = GetBlockSubsidyInner(nPrevBits, nPrevHeight, chainParams->GetConsensus(), /*fV20Active=*/ true);
     BOOST_CHECK_EQUAL(nSubsidy, 344897960ULL); // 431122450 * 0.8
+}
+
+BOOST_AUTO_TEST_CASE(pos_reward_activation_test)
+{
+    auto chain_params = CreateChainParams(*m_node.args, CBaseChainParams::REGTEST);
+    auto consensus = chain_params->GetConsensus();
+    consensus.fProofOfStakeEnabled = true;
+    consensus.nProofOfStakeHeight = 25;
+
+    BOOST_CHECK(!IsProofOfStakeEnabled(consensus, 24));
+    BOOST_CHECK(IsProofOfStakeEnabled(consensus, 25));
+
+    CBlockIndex prev;
+    prev.nHeight = 24;
+    prev.nBits = 0x207fffff;
+
+    BOOST_CHECK_EQUAL(GetProofOfStakeReward(&prev, consensus), 0);
+
+    prev.nHeight = 25;
+    const CAmount reward = GetProofOfStakeReward(&prev, consensus);
+    BOOST_CHECK_GT(reward, 0);
+    BOOST_CHECK_EQUAL(reward, GetBlockSubsidyInner(prev.nBits, prev.nHeight, consensus, /*fV20Active=*/ false));
+}
+
+BOOST_AUTO_TEST_CASE(pos_kernel_hash_is_deterministic)
+{
+    const COutPoint prevout{uint256S("01"), 3};
+    const auto hash1 = GetStakeKernelHash(prevout, /*nTimeBlockFrom=*/10, /*nTimeTx=*/20, /*nTimeTxPrev=*/15);
+    const auto hash2 = GetStakeKernelHash(prevout, /*nTimeBlockFrom=*/10, /*nTimeTx=*/20, /*nTimeTxPrev=*/15);
+    const auto hash3 = GetStakeKernelHash(prevout, /*nTimeBlockFrom=*/11, /*nTimeTx=*/20, /*nTimeTxPrev=*/15);
+
+    BOOST_CHECK_EQUAL(hash1, hash2);
+    BOOST_CHECK(hash1 != hash3);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

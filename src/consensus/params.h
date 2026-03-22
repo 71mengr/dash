@@ -165,6 +165,9 @@ struct Params {
     /** Proof of work parameters */
     uint256 powLimit;
     bool fProofOfStakeEnabled{false};
+    int nProofOfStakeHeight{std::numeric_limits<int>::max()};
+    int nStakeMinConfirmations{100};
+    uint32_t nStakeTimestampMask{0xf};
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;

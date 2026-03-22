@@ -13,6 +13,7 @@
 class CBlockHeader;
 class CBlockIndex;
 class uint256;
+class COutPoint;
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params&);
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params&);
@@ -20,5 +21,7 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
+uint256 GetStakeKernelHash(const COutPoint& prevout, uint32_t nTimeBlockFrom, uint32_t nTimeTx, uint32_t nTimeTxPrev);
+bool CheckProofOfStakeKernelHash(const COutPoint& prevout, uint32_t nTimeBlockFrom, uint32_t nTimeTx, uint32_t nTimeTxPrev, unsigned int nBits, const Consensus::Params&);
 
 #endif // BITCOIN_POW_H
