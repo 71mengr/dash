@@ -1545,6 +1545,51 @@ bool IsProofOfStakeEnabled(const Consensus::Params& consensusParams, int nHeight
     return consensusParams.fProofOfStakeEnabled && nHeight >= consensusParams.nProofOfStakeHeight;
 }
 
+bool CheckCoinStakeTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, int nStakeMinConfirmations, CAmount& value_in, CAmount& stake_reward)
+{
+    assert(tx.IsCoinStake());
+
+    if (!inputs.HaveInputs(tx)) {
+        return state.Invalid(TxValidationResult::TX_MISSING_INPUTS, "bad-txns-inputs-missingorspent",
+                         strprintf("%s: inputs missing/spent", __func__));
+    }
+
+    value_in = 0;
+    for (const auto& txin : tx.vin) {
+        const Coin& coin = inputs.AccessCoin(txin.prevout);
+        assert(!coin.IsSpent());
+
+        const int confirmations = nSpendHeight - coin.nHeight;
+        if (coin.IsCoinBase() && confirmations < COINBASE_MATURITY) {
+            return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-txns-premature-spend-of-coinbase",
+                strprintf("tried to spend coinbase at depth %d", confirmations));
+        }
+
+        if (confirmations < nStakeMinConfirmations) {
+            return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-cs-premature-spend",
+                strprintf("coinstake input depth %d below minimum %d", confirmations, nStakeMinConfirmations));
+        }
+
+        value_in += coin.out.nValue;
+        if (!MoneyRange(coin.out.nValue) || !MoneyRange(value_in)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputvalues-outofrange");
+        }
+    }
+
+    const CAmount value_out = tx.GetValueOut();
+    if (value_out < value_in) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cs-out-belowin",
+            strprintf("coinstake value out (%s) below value in (%s)", FormatMoney(value_out), FormatMoney(value_in)));
+    }
+
+    stake_reward = value_out - value_in;
+    if (!MoneyRange(stake_reward)) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-cs-reward-outofrange");
+    }
+
+    return true;
+}
+
 CAmount GetSuperblockSubsidyInner(int nPrevBits, int nPrevHeight, const Consensus::Params& consensusParams, bool fV20Active)
 {
     const auto [nSubsidy, nSuperblock] = GetBlockSubsidyHelper(nPrevBits, nPrevHeight, consensusParams, fV20Active);
@@ -2454,6 +2499,8 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
 
     std::vector<int> prevheights;
     CAmount nFees = 0;
+    std::optional<CAmount> coinstake_value_in;
+    std::optional<CAmount> coinstake_reward;
     int nInputs = 0;
     unsigned int nSigOps = 0;
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
@@ -2486,16 +2533,26 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
         {
             CAmount txfee = 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxInputs(tx, tx_state, view, pindex->nHeight, txfee)) {
+            CAmount coinstake_input_value{0};
+            CAmount coinstake_reward_value{0};
+            const bool inputs_valid = tx.IsCoinStake()
+                ? CheckCoinStakeTxInputs(tx, tx_state, view, pindex->nHeight, m_params.GetConsensus().nStakeMinConfirmations, coinstake_input_value, coinstake_reward_value)
+                : Consensus::CheckTxInputs(tx, tx_state, view, pindex->nHeight, txfee);
+            if (!inputs_valid) {
                 // Any transaction validation failure in ConnectBlock is a block consensus failure
                 LogPrintf("ERROR: %s: Consensus::CheckTxInputs: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                             tx_state.GetRejectReason(), tx_state.GetDebugMessage());
             }
-            nFees += txfee;
-            if (!MoneyRange(nFees)) {
-                LogPrintf("ERROR: %s: accumulated fee in the block out of range.\n", __func__);
-                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-txns-accumulated-fee-outofrange");
+            if (tx.IsCoinStake()) {
+                coinstake_value_in = coinstake_input_value;
+                coinstake_reward = coinstake_reward_value;
+            } else {
+                nFees += txfee;
+                if (!MoneyRange(nFees)) {
+                    LogPrintf("ERROR: %s: accumulated fee in the block out of range.\n", __func__);
+                    return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-txns-accumulated-fee-outofrange");
+                }
             }
 
             // Check that transaction is BIP68 final
@@ -2646,6 +2703,15 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     LogPrint(BCLog::BENCHMARK, "      - IS filter: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime5_1 - nTime4), nTimeISFilter * MICRO, nTimeISFilter * MILLI / nBlocksTotal);
 
     // DASH : MODIFIED TO CHECK MASTERNODE PAYMENTS AND SUPERBLOCKS
+
+    if (block.IsProofOfStake()) {
+        assert(coinstake_reward.has_value());
+        const CAmount max_stake_reward = GetProofOfStakeReward(pindex->pprev, m_params.GetConsensus()) + nFees;
+        if (*coinstake_reward > max_stake_reward) {
+            LogPrintf("ERROR: %s: coinstake reward %lld exceeds limit %lld\n", __func__, *coinstake_reward, max_stake_reward);
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cs-amount");
+        }
+    }
 
     // TODO: resync data (both ways?) and try to reprocess this block later.
     CAmount blockSubsidy = GetBlockSubsidy(pindex, m_params.GetConsensus());

@@ -156,6 +156,7 @@ CAmount GetBlockSubsidy(const CBlockIndex* const pindex, const Consensus::Params
 CAmount GetProofOfStakeReward(const CBlockIndex* const pindexPrev, const Consensus::Params& consensusParams);
 CAmount GetMasternodePayment(int nHeight, CAmount blockValue, bool fV20Active);
 bool IsProofOfStakeEnabled(const Consensus::Params& consensusParams, int nHeight);
+bool CheckCoinStakeTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, int nStakeMinConfirmations, CAmount& value_in, CAmount& stake_reward);
 
 bool AbortNode(BlockValidationState& state, const std::string& strMessage, const bilingual_str& userMessage = bilingual_str{});
 

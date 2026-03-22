@@ -131,4 +131,29 @@ BOOST_AUTO_TEST_CASE(pos_kernel_hash_is_deterministic)
     BOOST_CHECK(hash1 != hash3);
 }
 
+BOOST_AUTO_TEST_CASE(check_coinstake_tx_inputs_enforces_maturity_and_reward_accounting)
+{
+    CCoinsView view;
+    CCoinsViewCache cache(&view);
+
+    const COutPoint prevout{uint256S("02"), 0};
+    cache.AddCoin(prevout, Coin(CTxOut(5 * COIN, CScript{} << OP_TRUE), /*nHeight=*/150, /*fCoinBase=*/false), /*possible_overwrite=*/false);
+
+    CMutableTransaction tx;
+    tx.vin.emplace_back(prevout);
+    tx.vout.emplace_back(0, CScript{});
+    tx.vout.emplace_back(6 * COIN, CScript{} << OP_TRUE);
+
+    CAmount value_in{0};
+    CAmount reward{0};
+    TxValidationState state;
+    BOOST_CHECK(!CheckCoinStakeTxInputs(CTransaction(tx), state, cache, /*nSpendHeight=*/160, /*nStakeMinConfirmations=*/20, value_in, reward));
+    BOOST_CHECK_EQUAL(state.GetRejectReason(), "bad-cs-premature-spend");
+
+    state = TxValidationState{};
+    BOOST_CHECK(CheckCoinStakeTxInputs(CTransaction(tx), state, cache, /*nSpendHeight=*/170, /*nStakeMinConfirmations=*/20, value_in, reward));
+    BOOST_CHECK_EQUAL(value_in, 5 * COIN);
+    BOOST_CHECK_EQUAL(reward, 1 * COIN);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
