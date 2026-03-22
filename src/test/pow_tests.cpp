@@ -198,6 +198,14 @@ void sanity_check_chainparams(const ArgsManager& args, std::string chainName)
     BOOST_CHECK(!over);
     BOOST_CHECK(UintToArith256(consensus.powLimit) >= pow_compact);
 
+
+    // Live networks should expose the v24 deployment schedule instead of keeping it permanently disabled.
+    if (chainName == CBaseChainParams::MAIN || chainName == CBaseChainParams::TESTNET) {
+        const auto& v24 = consensus.vDeployments[Consensus::DEPLOYMENT_V24];
+        BOOST_CHECK(v24.nStartTime != Consensus::BIP9Deployment::NEVER_ACTIVE);
+        BOOST_CHECK_EQUAL(v24.nTimeout, Consensus::BIP9Deployment::NO_TIMEOUT);
+    }
+
     // check max target * 4*nPowTargetTimespan doesn't overflow -- see pow.cpp:CalculateNextWorkRequired()
     if (!consensus.fPowNoRetargeting) {
         arith_uint256 targ_max("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
