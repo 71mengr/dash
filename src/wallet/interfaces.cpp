@@ -19,6 +19,7 @@
 #include <uint256.h>
 #include <util/check.h>
 #include <util/system.h>
+#include <util/string.h>
 #include <util/translation.h>
 #include <util/ui_change_type.h>
 #include <validation.h>
@@ -39,7 +40,9 @@
 #include <txdb.h>
 #include <node/context.h>
 
+#include <cctype>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,6 +50,7 @@
 using interfaces::Chain;
 using interfaces::FoundBlock;
 using interfaces::Handler;
+using interfaces::LocalVerificationResult;
 using interfaces::MakeHandler;
 using interfaces::Wallet;
 using interfaces::WalletAddress;
@@ -62,6 +66,40 @@ using node::NodeContext;
 
 namespace wallet {
 namespace {
+std::string NormalizeLocalVerificationValue(std::string value)
+{
+    value = TrimString(value);
+    return Join(SplitString(value, ' '), " ");
+}
+
+std::string NormalizeLocalVerificationCountry(std::string country)
+{
+    country = NormalizeLocalVerificationValue(std::move(country));
+    std::transform(country.begin(), country.end(), country.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (!country.empty()) {
+        country[0] = ToUpper(country[0]);
+    }
+    for (size_t i = 1; i < country.size(); ++i) {
+        if (country[i - 1] == ' ' || country[i - 1] == '-') {
+            country[i] = ToUpper(country[i]);
+        }
+    }
+    return country;
+}
+
+const std::set<std::string>& ValidLocalVerificationCountries()
+{
+    static const std::set<std::string> countries{
+        "Argentina", "Australia", "Austria", "Belgium", "Brazil", "Canada", "Chile", "Colombia",
+        "Czech Republic", "Denmark", "Finland", "France", "Germany", "Greece", "Hong Kong", "Hungary",
+        "Iceland", "India", "Ireland", "Israel", "Italy", "Japan", "Luxembourg", "Malaysia",
+        "Mexico", "Netherlands", "New Zealand", "Norway", "Peru", "Philippines", "Poland", "Portugal",
+        "Singapore", "South Africa", "South Korea", "Spain", "Sweden", "Switzerland", "Thailand",
+        "United Arab Emirates", "United Kingdom", "United States"
+    };
+    return countries;
+}
+
 //! Construct wallet tx struct.
 WalletTx MakeWalletTx(CWallet& wallet, const CWalletTx& wtx)
 {
@@ -457,6 +495,82 @@ public:
         }
         result.denominated_untrusted_pending = bal.m_denominated_untrusted_pending;
         result.denominated_trusted = bal.m_denominated_trusted;
+        return result;
+    }
+
+    util::Result<LocalVerificationResult> runLocalVerification(const std::string& full_name_in, int age, const std::string& country_in) override
+    {
+        const std::string full_name = NormalizeLocalVerificationValue(full_name_in);
+        if (full_name.size() < 5) {
+            return util::Error{Untranslated("Full name must be at least 5 characters long")};
+        }
+        if (full_name.find(' ') == std::string::npos) {
+            return util::Error{Untranslated("Full name must include at least first name and last name")};
+        }
+        for (const char ch : full_name) {
+            if (!(std::isalpha(static_cast<unsigned char>(ch)) || ch == ' ' || ch == '\'' || ch == '-' || ch == '.')) {
+                return util::Error{Untranslated("Full name contains unsupported characters")};
+            }
+        }
+        if (age < 18 || age > 120) {
+            return util::Error{Untranslated("Age must be between 18 and 120")};
+        }
+
+        const std::string country = NormalizeLocalVerificationCountry(country_in);
+        if (!ValidLocalVerificationCountries().count(country)) {
+            return util::Error{Untranslated("Country must be a supported real country name")};
+        }
+
+        const std::string wallet_name = m_wallet->GetName();
+        const std::string credential_str = strprintf(
+            "{\"issuer\":\"local-verification\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
+            "\"credentialSubject\":{\"full_name\":\"%s\",\"full_name_hash\":\"%s\",\"email\":\"%s\",\"email_hash\":\"%s\","
+            "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\"}}",
+            full_name,
+            Hash(full_name).GetHex(),
+            wallet_name,
+            Hash(wallet_name).GetHex(),
+            country,
+            age,
+            full_name,
+            wallet_name);
+
+        std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
+        LocalVerificationProvider provider;
+        CCredentialMetadata metadata;
+        if (!provider.VerifyCredential(credential_data, metadata)) {
+            return util::Error{Untranslated("Local verification failed")};
+        }
+
+        CWalletCredential credential;
+        if (!credential.SetCredential(credential_data)) {
+            return util::Error{Untranslated("Failed to create local verification credential")};
+        }
+        credential.SetMetadata(metadata);
+
+        {
+            LOCK(m_wallet->cs_wallet);
+            WalletBatch batch(m_wallet->GetDatabase());
+            if (!batch.WriteCredential(credential)) {
+                return util::Error{Untranslated("Failed to write credential to database")};
+            }
+            if (!batch.WriteCredentialMetadata(metadata) || !batch.WriteCredentialStatus(credential.GetStatus())) {
+                return util::Error{Untranslated("Failed to persist credential metadata")};
+            }
+            m_wallet->SetCredential(credential);
+        }
+
+        const auto destination = m_wallet->GetNewDestination("");
+        if (!destination) {
+            return util::ErrorString(destination);
+        }
+
+        LocalVerificationResult result;
+        result.full_name = full_name;
+        result.age = age;
+        result.country = country;
+        result.wallet_name = wallet_name;
+        result.wallet_address = EncodeDestination(*destination);
         return result;
     }
 

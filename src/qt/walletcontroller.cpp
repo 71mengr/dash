@@ -27,6 +27,8 @@
 
 #include <QApplication>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <QProgressDialog>
@@ -38,6 +40,7 @@ using wallet::WALLET_FLAG_BLANK_WALLET;
 using wallet::WALLET_FLAG_DESCRIPTORS;
 using wallet::WALLET_FLAG_EXTERNAL_SIGNER;
 using wallet::WALLET_FLAG_DISABLE_PRIVATE_KEYS;
+using wallet::WALLET_FLAG_REQUIRE_VERIFICATION;
 
 WalletController::WalletController(ClientModel& client_model, QObject* parent)
     : QObject(parent)
@@ -265,6 +268,9 @@ void CreateWalletActivity::createWallet()
     if (m_create_wallet_dialog->isExternalSignerChecked()) {
         flags |= WALLET_FLAG_EXTERNAL_SIGNER;
     }
+    if (m_create_wallet_dialog->isRequireLocalVerificationChecked()) {
+        flags |= WALLET_FLAG_REQUIRE_VERIFICATION;
+    }
 
     QTimer::singleShot(500ms, worker(), [this, name, flags] {
         auto wallet{node().walletLoader().createWallet(name, m_passphrase, flags, m_warning_message)};
@@ -288,6 +294,61 @@ void CreateWalletActivity::finish()
     }
 
     if (m_wallet_model) {
+        const interfaces::WalletVerification verification = m_wallet_model->wallet().getVerification();
+
+        if (m_create_wallet_dialog && m_create_wallet_dialog->isRequireLocalVerificationChecked() && !verification.is_verified) {
+            while (true) {
+                bool ok = false;
+                const QString full_name = QInputDialog::getText(m_parent_widget, tr("Local verification"),
+                    tr("Enter your full legal name:"), QLineEdit::Normal, QString(), &ok);
+                if (!ok) {
+                    QMessageBox::warning(m_parent_widget, tr("Verification cancelled"),
+                        tr("Local verification was cancelled. The wallet will remain unable to generate new addresses until verification is completed."));
+                    Q_EMIT created(m_wallet_model);
+                    Q_EMIT finished();
+                    return;
+                }
+
+                const int age = QInputDialog::getInt(m_parent_widget, tr("Local verification"),
+                    tr("Enter your age:"), 18, 18, 120, 1, &ok);
+                if (!ok) {
+                    QMessageBox::warning(m_parent_widget, tr("Verification cancelled"),
+                        tr("Local verification was cancelled. The wallet will remain unable to generate new addresses until verification is completed."));
+                    Q_EMIT created(m_wallet_model);
+                    Q_EMIT finished();
+                    return;
+                }
+
+                const QString country = QInputDialog::getText(m_parent_widget, tr("Local verification"),
+                    tr("Enter your country (for example, United States):"), QLineEdit::Normal, QString(), &ok);
+                if (!ok) {
+                    QMessageBox::warning(m_parent_widget, tr("Verification cancelled"),
+                        tr("Local verification was cancelled. The wallet will remain unable to generate new addresses until verification is completed."));
+                    Q_EMIT created(m_wallet_model);
+                    Q_EMIT finished();
+                    return;
+                }
+
+                auto verification_result = m_wallet_model->wallet().runLocalVerification(
+                    full_name.toStdString(), age, country.toStdString());
+                if (verification_result) {
+                    QMessageBox::information(m_parent_widget, tr("Verification complete"),
+                        tr("Local verification succeeded. Primary wallet address: %1")
+                            .arg(QString::fromStdString(verification_result->wallet_address)));
+                    break;
+                }
+
+                const auto retry = QMessageBox::warning(m_parent_widget, tr("Local verification failed"),
+                    QString::fromStdString(util::ErrorString(verification_result).translated),
+                    QMessageBox::Retry | QMessageBox::Cancel, QMessageBox::Retry);
+                if (retry != QMessageBox::Retry) {
+                    Q_EMIT created(m_wallet_model);
+                    Q_EMIT finished();
+                    return;
+                }
+            }
+        }
+
         // Check if wallet is HD-enabled (has mnemonic) and requires verification
         // Skip verification for blank wallets or wallets with disabled private keys
         if (!m_wallet_model->wallet().hdEnabled() ||

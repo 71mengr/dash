@@ -81,6 +81,14 @@ struct WalletVerification {
     int64_t expires_at{0};
 };
 
+struct LocalVerificationResult {
+    std::string full_name;
+    int age{0};
+    std::string country;
+    std::string wallet_name;
+    std::string wallet_address;
+};
+
 //! Interface for accessing a wallet.
 class Wallet
 {
@@ -253,6 +261,9 @@ public:
 
     //! Get wallet verification and credential state.
     virtual WalletVerification getVerification() = 0;
+
+    //! Run the built-in local verification flow for this wallet.
+    virtual util::Result<LocalVerificationResult> runLocalVerification(const std::string& full_name, int age, const std::string& country) = 0;
 
     //! Get balances if possible without blocking.
     virtual bool tryGetBalances(WalletBalances& balances, uint256& block_hash) = 0;

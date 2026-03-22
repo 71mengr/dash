@@ -58,6 +58,21 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
 
     });
 
+    connect(ui->require_local_verification_checkbox, &QCheckBox::toggled, [this](bool checked) {
+        if (checked) {
+            ui->blank_wallet_checkbox->setChecked(false);
+            ui->disable_privkeys_checkbox->setChecked(false);
+            ui->external_signer_checkbox->setChecked(false);
+        }
+        ui->blank_wallet_checkbox->setEnabled(!checked);
+        ui->disable_privkeys_checkbox->setEnabled(!checked);
+#ifdef ENABLE_EXTERNAL_SIGNER
+        ui->external_signer_checkbox->setEnabled(m_has_signers && !checked);
+#else
+        ui->external_signer_checkbox->setEnabled(false);
+#endif
+    });
+
     connect(ui->external_signer_checkbox, &QCheckBox::toggled, [this](bool checked) {
         ui->encrypt_wallet_checkbox->setEnabled(!checked);
         ui->blank_wallet_checkbox->setEnabled(!checked);
@@ -68,6 +83,7 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
         // In that case it is checked by default. Toggling it restores the other
         // options to their default.
         ui->descriptor_checkbox->setChecked(checked);
+        ui->require_local_verification_checkbox->setChecked(false);
         ui->encrypt_wallet_checkbox->setChecked(false);
         ui->disable_privkeys_checkbox->setChecked(checked);
         // The blank check box is ambiguous. This flag is always true for a
@@ -83,6 +99,7 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
         // Wallets without private keys start out blank
         if (checked) {
             ui->blank_wallet_checkbox->setChecked(true);
+            ui->require_local_verification_checkbox->setChecked(false);
         }
 
         // When the encrypt_wallet_checkbox is disabled, uncheck it.
@@ -173,4 +190,9 @@ bool CreateWalletDialog::isDescriptorWalletChecked() const
 bool CreateWalletDialog::isExternalSignerChecked() const
 {
     return ui->external_signer_checkbox->isChecked();
+}
+
+bool CreateWalletDialog::isRequireLocalVerificationChecked() const
+{
+    return ui->require_local_verification_checkbox->isChecked();
 }
