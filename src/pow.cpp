@@ -9,7 +9,6 @@
 #include <chain.h>
 #include <hash.h>
 #include <primitives/block.h>
-#include <primitives/transaction.h>
 #include <uint256.h>
 
 #include <math.h>
@@ -240,7 +239,7 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bool fNegative;
     bool fOverflow;
     arith_uint256 bnTarget;
-
+    
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 
     // Check range
@@ -252,28 +251,4 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
         return false;
 
     return true;
-}
-
-uint256 GetStakeKernelHash(const COutPoint& prevout, uint32_t nTimeBlockFrom, uint32_t nTimeTx, uint32_t nTimeTxPrev)
-{
-    HashWriter ss{};
-    ss << prevout;
-    ss << nTimeBlockFrom;
-    ss << nTimeTxPrev;
-    ss << nTimeTx;
-    return ss.GetHash();
-}
-
-bool CheckProofOfStakeKernelHash(const COutPoint& prevout, uint32_t nTimeBlockFrom, uint32_t nTimeTx, uint32_t nTimeTxPrev, unsigned int nBits, const Consensus::Params& params)
-{
-    bool fNegative;
-    bool fOverflow;
-    arith_uint256 bnTarget;
-    bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
-
-    if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powLimit)) {
-        return false;
-    }
-
-    return UintToArith256(GetStakeKernelHash(prevout, nTimeBlockFrom, nTimeTx, nTimeTxPrev)) <= bnTarget;
 }
