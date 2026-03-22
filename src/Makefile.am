@@ -602,6 +602,7 @@ libbitcoin_node_a_SOURCES = \
   policy/packages.cpp \
   policy/policy.cpp \
   policy/settings.cpp \
+  pos.h \
   pos.cpp \
   pow.cpp \
   rest.cpp \
