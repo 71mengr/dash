@@ -1680,7 +1680,8 @@ static RPCHelpMan confirmownership()
 {
     return RPCHelpMan{"confirmownership",
         "\nConfirm that the loaded wallet owns a local verification credential hash and return the claimed identity details.\n"
-        "\nThis is intended for local-verification credentials stored in the wallet. The caller must be using the wallet that owns the credential.\n",
+        "\nThis is intended for local-verification credentials stored in the wallet. The caller must be using the wallet that owns the credential.\n"
+        "\nFor third-party checks, prefer signed, challenge-bound, verifier-specific ownership proofs instead of public hash lookups.\n",
         {
             {"credential_hash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Credential hash returned by getwalletcredential or getwalletinfo"},
         },
