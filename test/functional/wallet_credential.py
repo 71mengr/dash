@@ -56,6 +56,22 @@ class WalletCredentialTest(BitcoinTestFramework):
         assert local_result["wallet_address"]
         assert_equal(flow_wallet.getaddressinfo(local_result["wallet_address"])["ismine"], True)
 
+        flow_credential = flow_wallet.getwalletcredential()
+        ownership = flow_wallet.confirmownership(flow_credential["credential_hash"])
+        assert_equal(ownership["matches"], True)
+        assert_equal(ownership["is_verified"], True)
+        assert_equal(ownership["wallet_name"], "flow_wallet")
+        assert_equal(ownership["full_name"], "Ada Lovelace")
+        assert_equal(ownership["country"], "UNITED KINGDOM")
+        assert_equal(ownership["age"], 36)
+        assert_equal(ownership["wallet_address"], local_result["wallet_address"])
+
+        assert_raises_rpc_error(
+            -8,
+            "Credential hash does not belong to this wallet",
+            flow_wallet.confirmownership,
+            "00" * 32,
+        )
 
         self.log.info("Create a wallet that explicitly requires verification")
         self.nodes[0].createwallet(wallet_name="verified_only", require_verification=True)

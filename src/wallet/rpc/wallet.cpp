@@ -14,6 +14,7 @@
 #include <rpc/util.h>
 #include <util/bip32.h>
 #include <util/fees.h>
+#include <util/strencodings.h>
 #include <util/translation.h>
 #include <util/url.h>
 #include <util/vector.h>
@@ -453,13 +454,18 @@ static RPCHelpMan localverify()
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Country must be a supported real country name");
     }
 
+    const auto destination = pwallet->GetNewDestination("");
+    if (!destination) {
+        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(destination).original);
+    }
+    const std::string wallet_address = EncodeDestination(*destination);
     const std::string full_name_hash = Hash(full_name).GetHex();
     const std::string wallet_name = pwallet->GetName();
     const std::string wallet_name_hash = Hash(wallet_name).GetHex();
     const std::string credential_str = strprintf(
         "{\"issuer\":\"local-verification\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
         "\"credentialSubject\":{\"full_name\":\"%s\",\"full_name_hash\":\"%s\",\"email\":\"%s\",\"email_hash\":\"%s\","
-        "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\"}}",
+        "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\",\"wallet_address\":\"%s\"}}",
         full_name,
         full_name_hash,
         wallet_name,
@@ -467,7 +473,8 @@ static RPCHelpMan localverify()
         country,
         age,
         full_name,
-        wallet_name);
+        wallet_name,
+        wallet_address);
 
     std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
     LocalVerificationProvider provider;
@@ -499,11 +506,6 @@ static RPCHelpMan localverify()
         allowed_countries.push_back(valid_country);
     }
 
-    const auto destination = pwallet->GetNewDestination("");
-    if (!destination) {
-        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(destination).original);
-    }
-
     UniValue result(UniValue::VOBJ);
     result.pushKV("success", true);
     result.pushKV("wallet_verified", pwallet->IsVerified());
@@ -511,7 +513,7 @@ static RPCHelpMan localverify()
     result.pushKV("age", age);
     result.pushKV("country", country);
     result.pushKV("wallet_name", pwallet->GetName());
-    result.pushKV("wallet_address", EncodeDestination(*destination));
+    result.pushKV("wallet_address", wallet_address);
     result.pushKV("allowed_countries", std::move(allowed_countries));
     return result;
 },
@@ -1674,6 +1676,91 @@ static RPCHelpMan getwalletcredential()
     };
 }
 
+static RPCHelpMan confirmownership()
+{
+    return RPCHelpMan{"confirmownership",
+        "\nConfirm that the loaded wallet owns a local verification credential hash and return the claimed identity details.\n"
+        "\nThis is intended for local-verification credentials stored in the wallet. The caller must be using the wallet that owns the credential.\n",
+        {
+            {"credential_hash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Credential hash returned by getwalletcredential or getwalletinfo"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "matches", "Whether the provided hash matches this wallet's credential"},
+                {RPCResult::Type::BOOL, "is_verified", "Whether the wallet credential is currently verified and valid"},
+                {RPCResult::Type::STR, "wallet_name", "Wallet name"},
+                {RPCResult::Type::STR, "issuer", /*optional=*/true, "Credential issuer"},
+                {RPCResult::Type::STR, "credential_type", /*optional=*/true, "Credential type"},
+                {RPCResult::Type::STR_HEX, "credential_hash", /*optional=*/true, "Normalized credential hash"},
+                {RPCResult::Type::STR, "full_name", /*optional=*/true, "Credential subject full name"},
+                {RPCResult::Type::NUM, "age", /*optional=*/true, "Credential subject age"},
+                {RPCResult::Type::STR, "country", /*optional=*/true, "Credential subject country"},
+                {RPCResult::Type::STR, "wallet_address", /*optional=*/true, "Wallet address embedded in the local verification credential"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("confirmownership", "\"<credential-hash>\"")
+            + HelpExampleRpc("confirmownership", "\"<credential-hash>\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    auto normalize_hash = [](std::string value) {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return value;
+    };
+
+    LOCK(pwallet->cs_wallet);
+
+    const CWalletCredential cred = pwallet->GetCredential();
+    const CCredentialMetadata metadata = cred.GetMetadata();
+    if (metadata.credentialHash.IsNull()) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet does not have a credential hash to confirm");
+    }
+
+    const std::string requested_hash = normalize_hash(request.params[0].get_str());
+    const std::string stored_hash = normalize_hash(metadata.credentialHash.GetHex());
+    if (requested_hash != stored_hash) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Credential hash does not belong to this wallet");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("matches", true);
+    result.pushKV("is_verified", cred.IsVerified());
+    result.pushKV("wallet_name", pwallet->GetName());
+    result.pushKV("credential_hash", metadata.credentialHash.GetHex());
+    if (!metadata.issuer.empty()) {
+        result.pushKV("issuer", metadata.issuer);
+    }
+    if (!metadata.credentialType.empty()) {
+        result.pushKV("credential_type", metadata.credentialType);
+    }
+    if (cred.HasAttribute("full_name")) {
+        result.pushKV("full_name", cred.m_attributes.at("full_name"));
+    }
+    if (cred.HasAttribute("country")) {
+        result.pushKV("country", cred.m_attributes.at("country"));
+    }
+    if (cred.HasAttribute("age")) {
+        int64_t age{0};
+        if (ParseInt64(cred.m_attributes.at("age"), &age)) {
+            result.pushKV("age", age);
+        }
+    }
+    if (cred.HasAttribute("wallet_address")) {
+        result.pushKV("wallet_address", cred.m_attributes.at("wallet_address"));
+    }
+
+    return result;
+},
+    };
+}
+
 static RPCHelpMan importcredential()
 {
     return RPCHelpMan{"importcredential",
@@ -2138,6 +2225,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &wipewallettxes},
         {"wallet", &setwalletcredential},
         {"wallet", &getwalletcredential},
+        {"wallet", &confirmownership},
         {"wallet", &importcredential},
         {"wallet", &localverify},
         {"wallet", &chat},

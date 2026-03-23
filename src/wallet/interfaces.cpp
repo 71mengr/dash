@@ -521,11 +521,16 @@ public:
             return util::Error{Untranslated("Country must be a supported real country name")};
         }
 
+        const auto destination = m_wallet->GetNewDestination("");
+        if (!destination) {
+            return util::ErrorString(destination);
+        }
+        const std::string wallet_address = EncodeDestination(*destination);
         const std::string wallet_name = m_wallet->GetName();
         const std::string credential_str = strprintf(
             "{\"issuer\":\"local-verification\",\"type\":[\"VerifiableCredential\",\"FullKYC\"],"
             "\"credentialSubject\":{\"full_name\":\"%s\",\"full_name_hash\":\"%s\",\"email\":\"%s\",\"email_hash\":\"%s\","
-            "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\"}}",
+            "\"country\":\"%s\",\"age\":%d,\"owner_name\":\"%s\",\"owner_name_verified\":true,\"wallet\":\"%s\",\"wallet_address\":\"%s\"}}",
             full_name,
             Hash(full_name).GetHex(),
             wallet_name,
@@ -533,7 +538,8 @@ public:
             country,
             age,
             full_name,
-            wallet_name);
+            wallet_name,
+            wallet_address);
 
         std::vector<unsigned char> credential_data(credential_str.begin(), credential_str.end());
         LocalVerificationProvider provider;
@@ -560,17 +566,12 @@ public:
             m_wallet->SetCredential(credential);
         }
 
-        const auto destination = m_wallet->GetNewDestination("");
-        if (!destination) {
-            return util::ErrorString(destination);
-        }
-
         LocalVerificationResult result;
         result.full_name = full_name;
         result.age = age;
         result.country = country;
         result.wallet_name = wallet_name;
-        result.wallet_address = EncodeDestination(*destination);
+        result.wallet_address = wallet_address;
         return result;
     }
 
