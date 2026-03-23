@@ -523,7 +523,7 @@ public:
 
         const auto destination = m_wallet->GetNewDestination("");
         if (!destination) {
-            return util::ErrorString(destination);
+            return util::Error{util::ErrorString(destination)};
         }
         const std::string wallet_address = EncodeDestination(*destination);
         const std::string wallet_name = m_wallet->GetName();
