@@ -66,6 +66,27 @@ class WalletCredentialTest(BitcoinTestFramework):
         assert_equal(ownership["age"], 36)
         assert_equal(ownership["wallet_address"], local_result["wallet_address"])
 
+        proof = flow_wallet.generateownershipproof({
+            "challenge": "nonce-123",
+            "requested_claims": ["full_name", "country", "age_over_18", "wallet_address"],
+            "subject_address": local_result["wallet_address"],
+        })
+        verified_proof = flow_wallet.verifyownershipproof(proof["proof"])
+        assert_equal(verified_proof["valid"], True)
+        assert_equal(verified_proof["issuer"], "local-verification")
+        assert_equal(verified_proof["challenge"], "nonce-123")
+        assert_equal(verified_proof["subject_address"], local_result["wallet_address"])
+        assert_equal(verified_proof["claims"]["full_name"], "Ada Lovelace")
+        assert_equal(verified_proof["claims"]["country"], "UNITED KINGDOM")
+        assert_equal(verified_proof["claims"]["age_over_18"], True)
+        assert_equal(verified_proof["claims"]["wallet_address"], local_result["wallet_address"])
+
+        tampered = self.nodes[0].get_wallet_rpc("flow_wallet").verifyownershipproof(
+            proof["proof"].replace("nonce-123", "nonce-456")
+        )
+        assert_equal(tampered["valid"], False)
+        assert_equal(tampered["reason"], "invalid_signature")
+
         assert_raises_rpc_error(
             -8,
             "Credential hash does not belong to this wallet",

@@ -14,6 +14,7 @@
 #include <rpc/util.h>
 #include <util/bip32.h>
 #include <util/fees.h>
+#include <util/message.h>
 #include <util/strencodings.h>
 #include <util/translation.h>
 #include <util/url.h>
@@ -1612,6 +1613,98 @@ static RPCHelpMan setwalletcredential()
     };
 }
 
+
+static std::string NormalizeOwnershipClaim(std::string claim)
+{
+    std::transform(claim.begin(), claim.end(), claim.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return claim;
+}
+
+static bool IsSupportedOwnershipClaim(const std::string& claim)
+{
+    static const std::set<std::string> supported{"full_name", "country", "age", "age_over_18", "age_band", "wallet_address"};
+    return supported.count(claim) != 0;
+}
+
+static UniValue BuildOwnershipProofClaims(const CWalletCredential& cred, const std::vector<std::string>& requested_claims)
+{
+    UniValue claims(UniValue::VOBJ);
+    for (const std::string& claim : requested_claims) {
+        if (claim == "full_name") {
+            if (!cred.HasAttribute("full_name")) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Credential does not contain requested claim: full_name");
+            }
+            claims.pushKV("full_name", cred.m_attributes.at("full_name"));
+            continue;
+        }
+        if (claim == "country") {
+            if (!cred.HasAttribute("country")) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Credential does not contain requested claim: country");
+            }
+            claims.pushKV("country", cred.m_attributes.at("country"));
+            continue;
+        }
+        if (claim == "wallet_address") {
+            if (!cred.HasAttribute("wallet_address")) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Credential does not contain requested claim: wallet_address");
+            }
+            claims.pushKV("wallet_address", cred.m_attributes.at("wallet_address"));
+            continue;
+        }
+        if (!cred.HasAttribute("age")) {
+            throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Credential does not contain requested claim: %s", claim));
+        }
+
+        int64_t age{0};
+        if (!ParseInt64(cred.m_attributes.at("age"), &age)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Credential age claim is malformed");
+        }
+
+        if (claim == "age") {
+            claims.pushKV("age", age);
+        } else if (claim == "age_over_18") {
+            claims.pushKV("age_over_18", age >= 18);
+        } else if (claim == "age_band") {
+            std::string band;
+            if (age < 18) band = "under_18";
+            else if (age < 25) band = "18_24";
+            else if (age < 35) band = "25_34";
+            else if (age < 50) band = "35_49";
+            else if (age < 65) band = "50_64";
+            else band = "65_plus";
+            claims.pushKV("age_band", band);
+        }
+    }
+    return claims;
+}
+
+static UniValue BuildOwnershipProofPayload(const CWalletCredential& cred, const CCredentialMetadata& metadata, const std::string& subject_address, const std::string& challenge, const std::vector<std::string>& requested_claims, const std::string& recipient_pubkey)
+{
+    const int64_t issued_at = GetTime();
+    const int64_t expires_at = metadata.nExpiresAt > 0 ? std::min(metadata.nExpiresAt, issued_at + 300) : issued_at + 300;
+
+    UniValue payload(UniValue::VOBJ);
+    payload.pushKV("v", 1);
+    payload.pushKV("subject_address", subject_address);
+    payload.pushKV("claims", BuildOwnershipProofClaims(cred, requested_claims));
+    if (!metadata.issuer.empty()) {
+        payload.pushKV("issuer", metadata.issuer);
+    }
+    if (!metadata.credentialHash.IsNull()) {
+        payload.pushKV("credential_hash", metadata.credentialHash.GetHex());
+        payload.pushKV("credential_id", metadata.credentialHash.GetHex());
+    }
+    payload.pushKV("challenge", challenge);
+    payload.pushKV("issued_at", issued_at);
+    payload.pushKV("expires_at", expires_at);
+    if (!recipient_pubkey.empty()) {
+        payload.pushKV("recipient_pubkey", recipient_pubkey);
+    }
+    return payload;
+}
+
 static RPCHelpMan getwalletcredential()
 {
     return RPCHelpMan{"getwalletcredential",
@@ -1757,6 +1850,215 @@ static RPCHelpMan confirmownership()
         result.pushKV("wallet_address", cred.m_attributes.at("wallet_address"));
     }
 
+    return result;
+},
+    };
+}
+
+
+static RPCHelpMan generateownershipproof()
+{
+    return RPCHelpMan{"generateownershipproof",
+        "\nGenerate a challenge-bound ownership proof for selective external disclosure.\n"
+        "\nThis is intended for proof exchange with a verifier. Use confirmownership only for local wallet inspection.\n",
+        {
+            {"request", RPCArg::Type::OBJ, RPCArg::Optional::NO, "Proof request object",
+                {
+                    {"challenge", RPCArg::Type::STR, RPCArg::Optional::NO, "Verifier-provided challenge nonce"},
+                    {"requested_claims", RPCArg::Type::ARR, RPCArg::Optional::NO, "Claims to disclose",
+                        {{"claim", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Claim name (full_name, country, age, age_over_18, age_band, wallet_address)"}}},
+                    {"subject_address", RPCArg::Type::STR, RPCArg::Optional::NO, "Wallet address that is presenting the credential"},
+                    {"recipient_pubkey", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Optional recipient public key hint for encrypted transport workflows"},
+                }
+            },
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "proof", "Serialized proof blob"},
+                {RPCResult::Type::OBJ, "payload", "Canonical proof payload"},
+                {RPCResult::Type::STR, "signature", "Wallet signature over the payload"},
+                {RPCResult::Type::NUM_TIME, "expires_at", "Proof expiration time"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("generateownershipproof", "'{\"challenge\":\"nonce-123\",\"requested_claims\":[\"full_name\",\"country\",\"age_over_18\"],\"subject_address\":\"yX...\"}'")
+            + HelpExampleRpc("generateownershipproof", "{\"challenge\":\"nonce-123\",\"requested_claims\":[\"full_name\",\"country\",\"age_over_18\"],\"subject_address\":\"yX...\"}")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    const UniValue proof_request = request.params[0].get_obj();
+    const std::string challenge = proof_request["challenge"].get_str();
+    if (challenge.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "challenge must not be empty");
+    }
+
+    const std::string subject_address = proof_request["subject_address"].get_str();
+    if (!IsValidDestinationString(subject_address)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid subject_address");
+    }
+
+    std::vector<std::string> requested_claims;
+    std::set<std::string> seen_claims;
+    for (const UniValue& claim_value : proof_request["requested_claims"].getValues()) {
+        const std::string claim = NormalizeOwnershipClaim(claim_value.get_str());
+        if (!IsSupportedOwnershipClaim(claim)) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Unsupported requested claim: %s", claim));
+        }
+        if (seen_claims.insert(claim).second) {
+            requested_claims.push_back(claim);
+        }
+    }
+    if (requested_claims.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "requested_claims must contain at least one supported claim");
+    }
+
+    const std::string recipient_pubkey = proof_request.exists("recipient_pubkey") ? proof_request["recipient_pubkey"].get_str() : "";
+
+    LOCK(pwallet->cs_wallet);
+
+    const CWalletCredential cred = pwallet->GetCredential();
+    const CCredentialMetadata metadata = cred.GetMetadata();
+    if (!cred.IsValid()) {
+        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Wallet credential is not valid: %s", cred.GetVerificationFailureReason()));
+    }
+    const auto dest = DecodeDestination(subject_address);
+    const PKHash* pkhash = std::get_if<PKHash>(&dest);
+    if (!pkhash) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "subject_address does not refer to a key");
+    }
+    if (!IsMine(*pwallet, dest)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "subject_address does not belong to this wallet");
+    }
+    if (cred.HasAttribute("wallet_address") && cred.m_attributes.at("wallet_address") != subject_address) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "subject_address does not match the verified wallet address in the credential");
+    }
+
+    const UniValue payload = BuildOwnershipProofPayload(cred, metadata, subject_address, challenge, requested_claims, recipient_pubkey);
+    const std::string payload_str = payload.write();
+
+    std::string signature;
+    const SigningResult err = pwallet->SignMessage(payload_str, *pkhash, signature);
+    if (err != SigningResult::OK) {
+        throw JSONRPCError(RPC_WALLET_ERROR, SigningResultString(err));
+    }
+
+    UniValue proof(UniValue::VOBJ);
+    proof.pushKV("payload", payload);
+    proof.pushKV("subject_address", subject_address);
+    proof.pushKV("signature", signature);
+    proof.pushKV("signature_type", "wallet-message");
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("proof", proof.write());
+    result.pushKV("payload", payload);
+    result.pushKV("signature", signature);
+    result.pushKV("expires_at", payload["expires_at"].getInt<int64_t>());
+    return result;
+},
+    };
+}
+
+static RPCHelpMan verifyownershipproof()
+{
+    return RPCHelpMan{"verifyownershipproof",
+        "\nVerify an ownership proof blob produced by generateownershipproof.\n",
+        {
+            {"proof", RPCArg::Type::STR, RPCArg::Optional::NO, "Proof blob"},
+        },
+        RPCResult{RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "valid", "Whether the proof is currently valid"},
+                {RPCResult::Type::STR, "reason", /*optional=*/true, "Failure reason when valid is false"},
+                {RPCResult::Type::OBJ, "claims", /*optional=*/true, "Disclosed claims"},
+                {RPCResult::Type::STR, "issuer", /*optional=*/true, "Credential issuer"},
+                {RPCResult::Type::NUM_TIME, "expires_at", /*optional=*/true, "Proof expiration time"},
+                {RPCResult::Type::STR, "challenge", /*optional=*/true, "Challenge bound into the proof"},
+                {RPCResult::Type::STR, "subject_address", /*optional=*/true, "Wallet address that signed the proof"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("verifyownershipproof", "\"<proof-blob>\"")
+            + HelpExampleRpc("verifyownershipproof", "\"<proof-blob>\"")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    UniValue proof(UniValue::VOBJ);
+    if (!proof.read(request.params[0].get_str()) || !proof.isObject()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "proof must be a valid JSON object serialized as a string");
+    }
+    if (!proof.exists("payload") || !proof["payload"].isObject()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "proof is missing payload");
+    }
+    if (!proof.exists("subject_address") || !proof["subject_address"].isStr()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "proof is missing subject_address");
+    }
+    if (!proof.exists("signature") || !proof["signature"].isStr()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "proof is missing signature");
+    }
+
+    const UniValue payload = proof["payload"].get_obj();
+    const std::string subject_address = proof["subject_address"].get_str();
+    const std::string signature = proof["signature"].get_str();
+    const std::string payload_str = payload.write();
+
+    auto invalid = [&](const std::string& reason) {
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("valid", false);
+        result.pushKV("reason", reason);
+        return result;
+    };
+
+    switch (MessageVerify(subject_address, signature, payload_str)) {
+    case MessageVerificationResult::OK:
+        break;
+    case MessageVerificationResult::ERR_INVALID_ADDRESS:
+        return invalid("invalid_address");
+    case MessageVerificationResult::ERR_ADDRESS_NO_KEY:
+        return invalid("address_no_key");
+    case MessageVerificationResult::ERR_MALFORMED_SIGNATURE:
+        return invalid("malformed_signature");
+    case MessageVerificationResult::ERR_PUBKEY_NOT_RECOVERED:
+    case MessageVerificationResult::ERR_NOT_SIGNED:
+        return invalid("invalid_signature");
+    }
+
+    if (!payload.exists("expires_at") || !payload["expires_at"].isNum()) {
+        return invalid("missing_expiry");
+    }
+    if (!payload.exists("challenge") || !payload["challenge"].isStr() || payload["challenge"].get_str().empty()) {
+        return invalid("challenge_mismatch");
+    }
+    if (!payload.exists("subject_address") || !payload["subject_address"].isStr() || payload["subject_address"].get_str() != subject_address) {
+        return invalid("subject_address_mismatch");
+    }
+    const int64_t expires_at = payload["expires_at"].getInt<int64_t>();
+    if (GetTime() > expires_at) {
+        return invalid("expired");
+    }
+    if (payload.exists("revoked") && payload["revoked"].isBool() && payload["revoked"].get_bool()) {
+        return invalid("revoked");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("valid", true);
+    if (payload.exists("claims") && payload["claims"].isObject()) {
+        result.pushKV("claims", payload["claims"].get_obj());
+    }
+    if (payload.exists("issuer") && payload["issuer"].isStr()) {
+        result.pushKV("issuer", payload["issuer"].get_str());
+    }
+    result.pushKV("expires_at", expires_at);
+    result.pushKV("challenge", payload["challenge"].get_str());
+    result.pushKV("subject_address", subject_address);
+    if (payload.exists("credential_id") && payload["credential_id"].isStr()) {
+        result.pushKV("credential_id", payload["credential_id"].get_str());
+    }
+    if (payload.exists("credential_hash") && payload["credential_hash"].isStr()) {
+        result.pushKV("credential_hash", payload["credential_hash"].get_str());
+    }
     return result;
 },
     };
@@ -2227,6 +2529,8 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &setwalletcredential},
         {"wallet", &getwalletcredential},
         {"wallet", &confirmownership},
+        {"wallet", &generateownershipproof},
+        {"wallet", &verifyownershipproof},
         {"wallet", &importcredential},
         {"wallet", &localverify},
         {"wallet", &chat},
