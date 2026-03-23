@@ -1929,7 +1929,7 @@ static RPCHelpMan generateownershipproof()
     if (!pkhash) {
         throw JSONRPCError(RPC_TYPE_ERROR, "subject_address does not refer to a key");
     }
-    if (!IsMine(*pwallet, dest)) {
+    if (pwallet->IsMine(dest) == ISMINE_NO) {
         throw JSONRPCError(RPC_WALLET_ERROR, "subject_address does not belong to this wallet");
     }
     if (cred.HasAttribute("wallet_address") && cred.m_attributes.at("wallet_address") != subject_address) {
