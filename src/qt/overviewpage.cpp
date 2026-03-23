@@ -28,6 +28,8 @@
 
 #include <QAbstractItemDelegate>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include <QMessageBox>
 #include <QPainter>
@@ -156,7 +158,8 @@ OverviewPage::OverviewPage(QWidget* parent) :
                      }, {GUIUtil::FontWeight::Bold, 16});
 
     GUIUtil::setFont({ui->labelTotalText,
-                      ui->labelCredentialHeader}, {GUIUtil::FontWeight::Bold, 14});
+                      ui->labelCredentialHeader,
+                      ui->labelOwnershipVerifyIntro}, {GUIUtil::FontWeight::Bold, 14});
 
     GUIUtil::setFont({ui->labelBalanceText,
                       ui->labelPendingText,
@@ -178,6 +181,10 @@ OverviewPage::OverviewPage(QWidget* parent) :
     connect(ui->buttonChatSignMessage, &QPushButton::clicked, this, &OverviewPage::openSignMessageDialog);
     connect(ui->buttonChatVerifyMessage, &QPushButton::clicked, this, &OverviewPage::openVerifyMessageDialog);
     connect(ui->buttonChatClearDraft, &QPushButton::clicked, ui->textChatDraft, &QTextEdit::clear);
+    connect(ui->buttonOwnershipGenerate, &QPushButton::clicked, this, &OverviewPage::generateOwnershipProof);
+    connect(ui->buttonOwnershipCopy, &QPushButton::clicked, this, &OverviewPage::copyOwnershipProof);
+    connect(ui->buttonOwnershipUseGenerated, &QPushButton::clicked, this, &OverviewPage::populateOwnershipVerificationInput);
+    connect(ui->buttonOwnershipVerify, &QPushButton::clicked, this, &OverviewPage::verifyOwnershipProof);
 
     // init "out of sync" warning labels
     ui->labelWalletStatus->setText("(" + tr("out of sync") + ")");
@@ -420,6 +427,101 @@ void OverviewPage::updateVerificationSection()
         ? tr("Wallet verification is active.")
         : QString::fromStdString(verification.failure_reason.empty() ? std::string{"Wallet verification has not completed yet."} : verification.failure_reason);
     ui->labelCredentialDetailsValue->setText(details);
+
+    QString subject_address = verification.wallet_address.empty()
+        ? tr("No verified wallet address available")
+        : QString::fromStdString(verification.wallet_address);
+    ui->labelOwnershipSubjectValue->setText(subject_address);
+    ui->labelOwnershipSubjectValue->setToolTip(subject_address);
+
+    const bool ownership_enabled = verification.is_verified && subject_address != tr("No verified wallet address available");
+    ui->editOwnershipChallenge->setEnabled(ownership_enabled);
+    ui->checkOwnershipFullName->setEnabled(ownership_enabled);
+    ui->checkOwnershipCountry->setEnabled(ownership_enabled);
+    ui->checkOwnershipAgeOver18->setEnabled(ownership_enabled);
+    ui->checkOwnershipWalletAddress->setEnabled(ownership_enabled);
+    ui->buttonOwnershipGenerate->setEnabled(ownership_enabled);
+    ui->buttonOwnershipCopy->setEnabled(!ui->textOwnershipProofOutput->toPlainText().trimmed().isEmpty());
+}
+
+void OverviewPage::generateOwnershipProof()
+{
+    if (!walletModel) return;
+
+    const QString subject_address = ui->labelOwnershipSubjectValue->text().trimmed();
+    if (subject_address.isEmpty() || subject_address == tr("No verified wallet address available")) {
+        QMessageBox::warning(this, tr("Ownership Proof"), tr("A verified wallet address is required before you can create an ownership proof."));
+        return;
+    }
+
+    QStringList requested_claims;
+    if (ui->checkOwnershipFullName->isChecked()) requested_claims << "full_name";
+    if (ui->checkOwnershipCountry->isChecked()) requested_claims << "country";
+    if (ui->checkOwnershipAgeOver18->isChecked()) requested_claims << "age_over_18";
+    if (ui->checkOwnershipWalletAddress->isChecked()) requested_claims << "wallet_address";
+
+    std::vector<std::string> requested_claims_vec;
+    requested_claims_vec.reserve(requested_claims.size());
+    for (const QString& claim : requested_claims) {
+        requested_claims_vec.push_back(claim.toStdString());
+    }
+
+    const auto proof = walletModel->wallet().generateOwnershipProof(
+        ui->editOwnershipChallenge->text().toStdString(),
+        requested_claims_vec,
+        subject_address.toStdString(),
+        "");
+    if (!proof) {
+        QMessageBox::warning(this, tr("Ownership Proof"), QString::fromStdString(util::ErrorString(proof).original));
+        return;
+    }
+
+    ui->textOwnershipProofOutput->setPlainText(QString::fromStdString(proof->proof));
+    ui->buttonOwnershipCopy->setEnabled(true);
+    ui->labelOwnershipVerifyResult->setText(tr("Generated proof expires at %1.").arg(QDateTime::fromSecsSinceEpoch(proof->expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate)));
+}
+
+void OverviewPage::copyOwnershipProof()
+{
+    const QString proof = ui->textOwnershipProofOutput->toPlainText().trimmed();
+    if (proof.isEmpty()) return;
+    QGuiApplication::clipboard()->setText(proof);
+}
+
+void OverviewPage::populateOwnershipVerificationInput()
+{
+    ui->textOwnershipProofInput->setPlainText(ui->textOwnershipProofOutput->toPlainText());
+}
+
+void OverviewPage::verifyOwnershipProof()
+{
+    if (!walletModel) return;
+    const QString proof_blob = ui->textOwnershipProofInput->toPlainText().trimmed();
+    if (proof_blob.isEmpty()) {
+        QMessageBox::warning(this, tr("Ownership Proof"), tr("Paste a proof blob before verifying it."));
+        return;
+    }
+
+    const auto verification = walletModel->wallet().verifyOwnershipProof(proof_blob.toStdString());
+    if (!verification) {
+        QMessageBox::warning(this, tr("Ownership Proof"), QString::fromStdString(util::ErrorString(verification).original));
+        return;
+    }
+
+    QString result = verification->valid
+        ? tr("Valid proof for %1").arg(QString::fromStdString(verification->subject_address))
+        : tr("Invalid proof (%1)").arg(QString::fromStdString(verification->reason));
+
+    if (verification->valid) {
+        QStringList lines;
+        if (!verification->issuer.empty()) lines << tr("Issuer: %1").arg(QString::fromStdString(verification->issuer));
+        lines << tr("Challenge: %1").arg(QString::fromStdString(verification->challenge));
+        lines << tr("Expires: %1").arg(QDateTime::fromSecsSinceEpoch(verification->expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate));
+        if (!verification->claims.empty()) lines << tr("Claims: %1").arg(QString::fromStdString(verification->claims));
+        result += "\n" + lines.join("\n");
+    }
+
+    ui->labelOwnershipVerifyResult->setText(result);
 }
 
 void OverviewPage::refreshChatIdentity()

@@ -4,6 +4,10 @@
 
 #include <interfaces/wallet.h>
 
+#include <univalue.h>
+#include <util/strencodings.h>
+#include <util/message.h>
+#include <key_io.h>
 #include <chain.h>
 #include <coinjoin/client.h>
 #include <consensus/amount.h>
@@ -56,6 +60,8 @@ using interfaces::Wallet;
 using interfaces::WalletAddress;
 using interfaces::WalletBalances;
 using interfaces::WalletVerification;
+using interfaces::OwnershipProof;
+using interfaces::OwnershipProofVerification;
 using interfaces::WalletLoader;
 using interfaces::WalletOrderForm;
 using interfaces::WalletTx;
@@ -98,6 +104,81 @@ const std::set<std::string>& ValidLocalVerificationCountries()
         "United Arab Emirates", "United Kingdom", "United States"
     };
     return countries;
+}
+
+std::string NormalizeOwnershipClaim(std::string claim)
+{
+    std::transform(claim.begin(), claim.end(), claim.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return claim;
+}
+
+bool IsSupportedOwnershipClaim(const std::string& claim)
+{
+    static const std::set<std::string> supported{"full_name", "country", "age", "age_over_18", "age_band", "wallet_address"};
+    return supported.count(claim) != 0;
+}
+
+UniValue BuildOwnershipProofClaims(const CWalletCredential& cred, const std::vector<std::string>& requested_claims, bilingual_str& error)
+{
+    UniValue claims(UniValue::VOBJ);
+    for (const std::string& claim : requested_claims) {
+        if (claim == "full_name") {
+            if (!cred.HasAttribute("full_name")) { error = Untranslated("Credential does not contain requested claim: full_name"); return UniValue(); }
+            claims.pushKV("full_name", cred.m_attributes.at("full_name"));
+            continue;
+        }
+        if (claim == "country") {
+            if (!cred.HasAttribute("country")) { error = Untranslated("Credential does not contain requested claim: country"); return UniValue(); }
+            claims.pushKV("country", cred.m_attributes.at("country"));
+            continue;
+        }
+        if (claim == "wallet_address") {
+            if (!cred.HasAttribute("wallet_address")) { error = Untranslated("Credential does not contain requested claim: wallet_address"); return UniValue(); }
+            claims.pushKV("wallet_address", cred.m_attributes.at("wallet_address"));
+            continue;
+        }
+        if (!cred.HasAttribute("age")) { error = Untranslated(strprintf("Credential does not contain requested claim: %s", claim)); return UniValue(); }
+        int64_t age{0};
+        if (!ParseInt64(cred.m_attributes.at("age"), &age)) { error = Untranslated("Credential age claim is malformed"); return UniValue(); }
+        if (claim == "age") claims.pushKV("age", age);
+        else if (claim == "age_over_18") claims.pushKV("age_over_18", age >= 18);
+        else if (claim == "age_band") {
+            std::string band;
+            if (age < 18) band = "under_18";
+            else if (age < 25) band = "18_24";
+            else if (age < 35) band = "25_34";
+            else if (age < 50) band = "35_49";
+            else if (age < 65) band = "50_64";
+            else band = "65_plus";
+            claims.pushKV("age_band", band);
+        }
+    }
+    return claims;
+}
+
+UniValue BuildOwnershipProofPayload(const CWalletCredential& cred, const CCredentialMetadata& metadata, const std::string& subject_address, const std::string& challenge, const std::vector<std::string>& requested_claims, const std::string& recipient_pubkey, bilingual_str& error)
+{
+    const int64_t issued_at = GetTime();
+    const int64_t expires_at = metadata.nExpiresAt > 0 ? std::min(metadata.nExpiresAt, issued_at + 300) : issued_at + 300;
+    UniValue claims = BuildOwnershipProofClaims(cred, requested_claims, error);
+    if (!error.empty()) return UniValue();
+
+    UniValue payload(UniValue::VOBJ);
+    payload.pushKV("v", 1);
+    payload.pushKV("subject_address", subject_address);
+    payload.pushKV("claims", claims);
+    if (!metadata.issuer.empty()) payload.pushKV("issuer", metadata.issuer);
+    if (!metadata.credentialHash.IsNull()) {
+        payload.pushKV("credential_hash", metadata.credentialHash.GetHex());
+        payload.pushKV("credential_id", metadata.credentialHash.GetHex());
+    }
+    payload.pushKV("challenge", challenge);
+    payload.pushKV("issued_at", issued_at);
+    payload.pushKV("expires_at", expires_at);
+    if (!recipient_pubkey.empty()) payload.pushKV("recipient_pubkey", recipient_pubkey);
+    return payload;
 }
 
 //! Construct wallet tx struct.
@@ -575,6 +656,99 @@ public:
         return result;
     }
 
+    util::Result<OwnershipProof> generateOwnershipProof(const std::string& challenge_in, const std::vector<std::string>& requested_claims_in, const std::string& subject_address, const std::string& recipient_pubkey) override
+    {
+        const std::string challenge = TrimString(challenge_in);
+        if (challenge.empty()) return util::Error{Untranslated("Challenge must not be empty")};
+        if (!IsValidDestinationString(subject_address)) return util::Error{Untranslated("Invalid subject address")};
+
+        std::vector<std::string> requested_claims;
+        std::set<std::string> seen_claims;
+        for (const std::string& raw_claim : requested_claims_in) {
+            const std::string claim = NormalizeOwnershipClaim(raw_claim);
+            if (!IsSupportedOwnershipClaim(claim)) {
+                return util::Error{Untranslated(strprintf("Unsupported requested claim: %s", raw_claim))};
+            }
+            if (seen_claims.insert(claim).second) requested_claims.push_back(claim);
+        }
+        if (requested_claims.empty()) return util::Error{Untranslated("Select at least one claim to disclose")};
+
+        LOCK(m_wallet->cs_wallet);
+        const CWalletCredential cred = m_wallet->GetCredential();
+        const CCredentialMetadata metadata = cred.GetMetadata();
+        if (!cred.IsValid()) return util::Error{Untranslated(strprintf("Wallet credential is not valid: %s", cred.GetVerificationFailureReason()))};
+
+        const auto dest = DecodeDestination(subject_address);
+        const PKHash* pkhash = std::get_if<PKHash>(&dest);
+        if (!pkhash) return util::Error{Untranslated("Subject address does not refer to a key")};
+        if (!IsMine(*m_wallet, dest)) return util::Error{Untranslated("Subject address does not belong to this wallet")};
+        if (cred.HasAttribute("wallet_address") && cred.m_attributes.at("wallet_address") != subject_address) {
+            return util::Error{Untranslated("Subject address does not match the verified wallet address in the credential")};
+        }
+
+        bilingual_str payload_error;
+        const UniValue payload = BuildOwnershipProofPayload(cred, metadata, subject_address, challenge, requested_claims, recipient_pubkey, payload_error);
+        if (!payload_error.empty()) return util::Error{payload_error};
+        const std::string payload_str = payload.write();
+
+        std::string signature;
+        const SigningResult err = m_wallet->SignMessage(payload_str, *pkhash, signature);
+        if (err != SigningResult::OK) return util::Error{Untranslated(SigningResultString(err))};
+
+        UniValue proof(UniValue::VOBJ);
+        proof.pushKV("payload", payload);
+        proof.pushKV("subject_address", subject_address);
+        proof.pushKV("signature", signature);
+        proof.pushKV("signature_type", "wallet-message");
+
+        OwnershipProof result;
+        result.proof = proof.write();
+        result.payload = payload_str;
+        result.signature = signature;
+        result.expires_at = payload["expires_at"].getInt<int64_t>();
+        return result;
+    }
+
+    util::Result<OwnershipProofVerification> verifyOwnershipProof(const std::string& proof_string) override
+    {
+        UniValue proof(UniValue::VOBJ);
+        if (!proof.read(proof_string) || !proof.isObject()) return util::Error{Untranslated("Proof must be a valid JSON object serialized as a string")};
+        if (!proof.exists("payload") || !proof["payload"].isObject()) return util::Error{Untranslated("Proof is missing payload")};
+        if (!proof.exists("subject_address") || !proof["subject_address"].isStr()) return util::Error{Untranslated("Proof is missing subject address")};
+        if (!proof.exists("signature") || !proof["signature"].isStr()) return util::Error{Untranslated("Proof is missing signature")};
+
+        const UniValue payload = proof["payload"].get_obj();
+        const std::string subject = proof["subject_address"].get_str();
+        const std::string signature = proof["signature"].get_str();
+        const std::string payload_str = payload.write();
+
+        OwnershipProofVerification result;
+        switch (MessageVerify(subject, signature, payload_str)) {
+        case MessageVerificationResult::OK: break;
+        case MessageVerificationResult::ERR_INVALID_ADDRESS: result.reason = "invalid_address"; return result;
+        case MessageVerificationResult::ERR_ADDRESS_NO_KEY: result.reason = "address_no_key"; return result;
+        case MessageVerificationResult::ERR_MALFORMED_SIGNATURE: result.reason = "malformed_signature"; return result;
+        case MessageVerificationResult::ERR_PUBKEY_NOT_RECOVERED:
+        case MessageVerificationResult::ERR_NOT_SIGNED: result.reason = "invalid_signature"; return result;
+        }
+        if (!payload.exists("expires_at") || !payload["expires_at"].isNum()) { result.reason = "missing_expiry"; return result; }
+        if (!payload.exists("challenge") || !payload["challenge"].isStr() || payload["challenge"].get_str().empty()) { result.reason = "challenge_mismatch"; return result; }
+        if (!payload.exists("subject_address") || !payload["subject_address"].isStr() || payload["subject_address"].get_str() != subject) { result.reason = "subject_address_mismatch"; return result; }
+        const int64_t expires_at = payload["expires_at"].getInt<int64_t>();
+        if (GetTime() > expires_at) { result.reason = "expired"; return result; }
+        if (payload.exists("revoked") && payload["revoked"].isBool() && payload["revoked"].get_bool()) { result.reason = "revoked"; return result; }
+
+        result.valid = true;
+        result.expires_at = expires_at;
+        result.challenge = payload["challenge"].get_str();
+        result.subject_address = subject;
+        if (payload.exists("claims") && payload["claims"].isObject()) result.claims = payload["claims"].write(2);
+        if (payload.exists("issuer") && payload["issuer"].isStr()) result.issuer = payload["issuer"].get_str();
+        if (payload.exists("credential_id") && payload["credential_id"].isStr()) result.credential_id = payload["credential_id"].get_str();
+        if (payload.exists("credential_hash") && payload["credential_hash"].isStr()) result.credential_hash = payload["credential_hash"].get_str();
+        return result;
+    }
+
     WalletVerification getVerification() override
     {
         LOCK(m_wallet->cs_wallet);
@@ -603,6 +777,9 @@ public:
         result.expires_at = metadata.nExpiresAt;
         if (!metadata.credentialHash.IsNull()) {
             result.credential_hash = metadata.credentialHash.GetHex();
+        }
+        if (credential.HasAttribute("wallet_address")) {
+            result.wallet_address = credential.m_attributes.at("wallet_address");
         }
         return result;
     }

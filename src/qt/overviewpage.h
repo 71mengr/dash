@@ -81,6 +81,10 @@ private Q_SLOTS:
     void refreshChatIdentity();
     void openSignMessageDialog();
     void openVerifyMessageDialog();
+    void generateOwnershipProof();
+    void copyOwnershipProof();
+    void populateOwnershipVerificationInput();
+    void verifyOwnershipProof();
 };
 
 #endif // BITCOIN_QT_OVERVIEWPAGE_H

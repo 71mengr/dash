@@ -77,7 +77,27 @@ struct WalletVerification {
     std::string issuer;
     std::string credential_type;
     std::string credential_hash;
+    std::string wallet_address;
     std::string failure_reason;
+    int64_t expires_at{0};
+};
+
+struct OwnershipProof {
+    std::string proof;
+    std::string payload;
+    std::string signature;
+    int64_t expires_at{0};
+};
+
+struct OwnershipProofVerification {
+    bool valid{false};
+    std::string reason;
+    std::string claims;
+    std::string issuer;
+    std::string challenge;
+    std::string subject_address;
+    std::string credential_id;
+    std::string credential_hash;
     int64_t expires_at{0};
 };
 
@@ -264,6 +284,12 @@ public:
 
     //! Run the built-in local verification flow for this wallet.
     virtual util::Result<LocalVerificationResult> runLocalVerification(const std::string& full_name, int age, const std::string& country) = 0;
+
+    //! Generate a challenge-bound ownership proof for selective disclosure.
+    virtual util::Result<OwnershipProof> generateOwnershipProof(const std::string& challenge, const std::vector<std::string>& requested_claims, const std::string& subject_address, const std::string& recipient_pubkey) = 0;
+
+    //! Verify a serialized ownership proof blob.
+    virtual util::Result<OwnershipProofVerification> verifyOwnershipProof(const std::string& proof) = 0;
 
     //! Get balances if possible without blocking.
     virtual bool tryGetBalances(WalletBalances& balances, uint256& block_hash) = 0;

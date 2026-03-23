@@ -348,6 +348,109 @@
             </item>
            </layout>
           </item>
+          <item>
+           <widget class="QLabel" name="labelOwnershipProofIntro">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Create a short-lived ownership proof from your verified credential and wallet address, then validate a proof blob from another wallet.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QFormLayout" name="formLayoutOwnershipProof">
+            <property name="fieldGrowthPolicy">
+             <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+            </property>
+            <item row="0" column="0">
+             <widget class="QLabel" name="labelOwnershipSubjectText">
+              <property name="text">
+               <string>Subject address:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLabel" name="labelOwnershipSubjectValue">
+              <property name="text">
+               <string>No verified wallet address available</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="textInteractionFlags">
+               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="labelOwnershipChallengeText">
+              <property name="text">
+               <string>Challenge:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QLineEdit" name="editOwnershipChallenge">
+              <property name="placeholderText">
+               <string>Paste a verifier nonce or enter a unique challenge</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="labelOwnershipClaimsText">
+              <property name="text">
+               <string>Disclose claims:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <layout class="QHBoxLayout" name="horizontalLayoutOwnershipClaims">
+              <item><widget class="QCheckBox" name="checkOwnershipFullName"><property name="text"><string>Full name</string></property></widget></item>
+              <item><widget class="QCheckBox" name="checkOwnershipCountry"><property name="text"><string>Country</string></property></widget></item>
+              <item><widget class="QCheckBox" name="checkOwnershipAgeOver18"><property name="text"><string>18+</string></property><property name="checked"><bool>true</bool></property></widget></item>
+              <item><widget class="QCheckBox" name="checkOwnershipWalletAddress"><property name="text"><string>Wallet address</string></property><property name="checked"><bool>true</bool></property></widget></item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutOwnershipButtons">
+            <item><widget class="QPushButton" name="buttonOwnershipGenerate"><property name="text"><string>Create Ownership Proof</string></property></widget></item>
+            <item><widget class="QPushButton" name="buttonOwnershipCopy"><property name="text"><string>Copy Proof</string></property></widget></item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="textOwnershipProofOutput">
+            <property name="readOnly"><bool>true</bool></property>
+            <property name="placeholderText"><string>The generated proof blob will appear here.</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelOwnershipVerifyIntro">
+            <property name="text">
+             <string>Verify a proof blob</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="textOwnershipProofInput">
+            <property name="placeholderText"><string>Paste an ownership proof blob to validate the signature, expiry, challenge, and disclosed claims.</string></property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutOwnershipVerifyButtons">
+            <item><widget class="QPushButton" name="buttonOwnershipVerify"><property name="text"><string>Verify Proof</string></property></widget></item>
+            <item><widget class="QPushButton" name="buttonOwnershipUseGenerated"><property name="text"><string>Use Generated Proof</string></property></widget></item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelOwnershipVerifyResult">
+            <property name="wordWrap"><bool>true</bool></property>
+            <property name="text"><string>No ownership proof verified yet.</string></property>
+            <property name="textInteractionFlags"><set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set></property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
