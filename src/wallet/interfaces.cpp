@@ -681,7 +681,7 @@ public:
         const auto dest = DecodeDestination(subject_address);
         const PKHash* pkhash = std::get_if<PKHash>(&dest);
         if (!pkhash) return util::Error{Untranslated("Subject address does not refer to a key")};
-        if (!IsMine(*m_wallet, dest)) return util::Error{Untranslated("Subject address does not belong to this wallet")};
+        if (m_wallet->IsMine(dest) == ISMINE_NO) return util::Error{Untranslated("Subject address does not belong to this wallet")};
         if (cred.HasAttribute("wallet_address") && cred.m_attributes.at("wallet_address") != subject_address) {
             return util::Error{Untranslated("Subject address does not match the verified wallet address in the credential")};
         }
