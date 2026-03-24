@@ -27,6 +27,7 @@
 #include <primitives/transaction.h>
 #include <random.h>
 #include <scheduler.h>
+#include <saltedhasher.h>
 #include <streams.h>
 #include <sync.h>
 #include <timedata.h>
@@ -115,7 +116,7 @@ static constexpr auto UNCONDITIONAL_RELAY_DELAY = 2min;
 namespace {
 Mutex g_wallet_chat_net_mutex;
 std::map<std::string, std::deque<WalletChatNetMessage>> g_wallet_chat_inbox GUARDED_BY(g_wallet_chat_net_mutex);
-std::unordered_set<uint256, SaltedUint256Hasher> g_wallet_chat_seen GUARDED_BY(g_wallet_chat_net_mutex);
+Uint256HashSet g_wallet_chat_seen GUARDED_BY(g_wallet_chat_net_mutex);
 struct WalletChatPendingRelay {
     WalletChatNetMessage message;
     int64_t next_retry{0};
