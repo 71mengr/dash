@@ -605,6 +605,7 @@ libbitcoin_node_a_SOURCES = \
   pos.h \
   pos.cpp \
   pow.cpp \
+  pow_kawheavy.cpp \
   rest.cpp \
   rpc/blockchain.cpp \
   rpc/coinjoin.cpp \
