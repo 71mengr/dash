@@ -21,6 +21,8 @@
 
 #include <coinjoin/options.h>
 #include <interfaces/coinjoin.h>
+#include <interfaces/node.h>
+#include <univalue.h>
 
 #include <algorithm>
 #include <map>
@@ -36,6 +38,7 @@
 #include <QSettings>
 #include <QStatusTipEvent>
 #include <QTimer>
+#include <QUrl>
 
 #define ITEM_HEIGHT 54
 #define NUM_ITEMS_DISABLED 5
@@ -43,6 +46,16 @@
 #define NUM_ITEMS_ENABLED_ADVANCED 8
 
 Q_DECLARE_METATYPE(interfaces::WalletBalances)
+
+namespace {
+std::string GetWalletRpcUri(const WalletModel& wallet_model)
+{
+    const QString wallet_name = wallet_model.getWalletName();
+    if (wallet_name.isEmpty()) return "/";
+    const QByteArray encoded_name = QUrl::toPercentEncoding(wallet_name);
+    return "/wallet/" + std::string(encoded_name.constData(), encoded_name.length());
+}
+} // namespace
 
 class TxViewDelegate : public QAbstractItemDelegate
 {
@@ -181,6 +194,9 @@ OverviewPage::OverviewPage(QWidget* parent) :
     connect(ui->buttonChatSignMessage, &QPushButton::clicked, this, &OverviewPage::openSignMessageDialog);
     connect(ui->buttonChatVerifyMessage, &QPushButton::clicked, this, &OverviewPage::openVerifyMessageDialog);
     connect(ui->buttonChatClearDraft, &QPushButton::clicked, ui->textChatDraft, &QTextEdit::clear);
+    connect(ui->buttonChatSend, &QPushButton::clicked, this, &OverviewPage::sendChatMessage);
+    connect(ui->buttonChatInbox, &QPushButton::clicked, this, &OverviewPage::syncChatInbox);
+    connect(ui->buttonChatRefresh, &QPushButton::clicked, this, &OverviewPage::refreshChatMessages);
     connect(ui->buttonOwnershipGenerate, &QPushButton::clicked, this, &OverviewPage::generateOwnershipProof);
     connect(ui->buttonOwnershipCopy, &QPushButton::clicked, this, &OverviewPage::copyOwnershipProof);
     connect(ui->buttonOwnershipUseGenerated, &QPushButton::clicked, this, &OverviewPage::populateOwnershipVerificationInput);
@@ -334,6 +350,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         connect(model, &WalletModel::balanceChanged, this, &OverviewPage::setBalance);
         connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::updateVerificationSection);
         connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::refreshChatIdentity);
+        connect(model, &WalletModel::balanceChanged, this, &OverviewPage::refreshChatMessages);
 
         updateWatchOnlyLabels((wallet.haveWatchOnly() && !model->wallet().privateKeysDisabled()) || gArgs.GetBoolArg("-debug-ui", false));
         connect(model, &WalletModel::notifyWatchonlyChanged, [this](bool showWatchOnly) {
@@ -364,6 +381,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
 
         updateVerificationSection();
         refreshChatIdentity();
+        refreshChatMessages();
     }
 }
 
@@ -552,6 +570,99 @@ void OverviewPage::refreshChatIdentity()
         ? tr("Connected to %n peer(s); chat packets can be routed once a transport is implemented.", "", clientModel->getNumConnections())
         : tr("Waiting for network peers before routing wallet-authenticated chat."));
     ui->labelChatVoiceValue->setText(tr("Microphone capture is reserved for a future transport layer; this build exposes the voice-ready workflow in the GUI."));
+    ui->buttonChatSend->setEnabled(!identity_address.startsWith(tr("No receiving address")));
+    ui->buttonChatInbox->setEnabled(!identity_address.startsWith(tr("No receiving address")));
+}
+
+void OverviewPage::sendChatMessage()
+{
+    if (!walletModel) return;
+    const QString recipient = ui->editChatRecipient->text().trimmed();
+    const QString draft = ui->textChatDraft->toPlainText().trimmed();
+    if (recipient.isEmpty() || draft.isEmpty()) {
+        QMessageBox::warning(this, tr("Wallet Chat"), tr("Recipient and draft message are required."));
+        return;
+    }
+
+    UniValue params(UniValue::VARR);
+    params.push_back("message");
+    params.push_back(recipient.toStdString());
+    params.push_back(draft.toStdString());
+    const QString shared_secret = ui->editChatEndpoint->text().trimmed();
+    if (!shared_secret.isEmpty()) {
+        params.push_back(shared_secret.toStdString());
+    }
+
+    try {
+        walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
+        ui->textChatDraft->clear();
+        refreshChatMessages();
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
+    }
+}
+
+void OverviewPage::syncChatInbox()
+{
+    if (!walletModel) return;
+    const QString identity_address = ui->labelChatIdentityValue->text().trimmed();
+    if (identity_address.isEmpty() || identity_address.startsWith(tr("No receiving address"))) {
+        QMessageBox::warning(this, tr("Wallet Chat"), tr("A wallet identity address is required before inbox sync."));
+        return;
+    }
+
+    UniValue params(UniValue::VARR);
+    params.push_back("networkinbox");
+    params.push_back(identity_address.toStdString());
+    const QString shared_secret = ui->editChatEndpoint->text().trimmed();
+    if (!shared_secret.isEmpty()) {
+        params.push_back(shared_secret.toStdString());
+    }
+
+    try {
+        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
+        QStringList network_lines;
+        network_lines << tr("Network inbox sync pulled %1 message(s).").arg(result.size());
+        for (size_t i = 0; i < result.size(); ++i) {
+            const UniValue& msg = result[i];
+            const QString sender = QString::fromStdString(msg["sender_address"].get_str());
+            const QString body = msg.exists("message")
+                ? QString::fromStdString(msg["message"].get_str())
+                : tr("[encrypted payload]");
+            network_lines << tr("↳ %1: %2").arg(sender, body);
+        }
+        ui->labelChatRouteValue->setText(network_lines.join("\n"));
+        refreshChatMessages();
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
+    }
+}
+
+void OverviewPage::refreshChatMessages()
+{
+    if (!walletModel) return;
+    const QString recipient = ui->editChatRecipient->text().trimmed();
+    UniValue params(UniValue::VARR);
+    params.push_back("list");
+    if (!recipient.isEmpty()) {
+        params.push_back(recipient.toStdString());
+    }
+
+    try {
+        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
+        QStringList lines;
+        for (size_t i = 0; i < result.size(); ++i) {
+            const UniValue& msg = result[i];
+            const QString direction = QString::fromStdString(msg["direction"].get_str()) == "outbound" ? tr("You") : tr("Peer");
+            const QString address = QString::fromStdString(msg["address"].get_str());
+            const QString body = QString::fromStdString(msg["message"].get_str());
+            lines << tr("%1 • %2: %3").arg(direction, address, body);
+        }
+        if (lines.isEmpty()) lines << tr("No chat messages saved for this wallet yet.");
+        ui->textChatHistory->setPlainText(lines.join("\n"));
+    } catch (const std::exception& e) {
+        ui->textChatHistory->setPlainText(tr("Unable to read chat history: %1").arg(QString::fromStdString(e.what())));
+    }
 }
 
 void OverviewPage::openSignMessageDialog()

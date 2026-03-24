@@ -746,10 +746,48 @@
               </property>
              </widget>
             </item>
+            <item row="7" column="0">
+             <widget class="QLabel" name="labelChatHistoryText">
+              <property name="text">
+               <string>Chat history:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="7" column="1">
+             <widget class="QPlainTextEdit" name="textChatHistory">
+              <property name="readOnly">
+               <bool>true</bool>
+              </property>
+              <property name="placeholderText">
+               <string>Use Send, Inbox Sync, or Refresh to load wallet chat messages.</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayoutChatButtons">
+            <item>
+             <widget class="QPushButton" name="buttonChatSend">
+              <property name="text">
+               <string>Send Message</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonChatInbox">
+              <property name="text">
+               <string>Inbox Sync</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonChatRefresh">
+              <property name="text">
+               <string>Refresh History</string>
+              </property>
+             </widget>
+            </item>
             <item>
              <widget class="QPushButton" name="buttonChatSignMessage">
               <property name="text">

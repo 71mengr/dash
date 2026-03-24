@@ -79,6 +79,9 @@ private Q_SLOTS:
     void updateWatchOnlyLabels(bool showWatchOnly);
     void setMonospacedFont(const QFont&);
     void refreshChatIdentity();
+    void sendChatMessage();
+    void syncChatInbox();
+    void refreshChatMessages();
     void openSignMessageDialog();
     void openVerifyMessageDialog();
     void generateOwnershipProof();
