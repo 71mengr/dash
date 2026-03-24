@@ -2221,9 +2221,15 @@ static RPCHelpMan chat()
     }
 
     if (command == "list") {
-        const std::optional<std::string> address = request.params.size() > 1 && !request.params[1].isNull()
-            ? std::make_optional(request.params[1].get_str())
-            : std::nullopt;
+        std::optional<std::string> address = std::nullopt;
+        if (request.params.size() > 1 && !request.params[1].isNull()) {
+            const std::string provided_address = request.params[1].get_str();
+            const CTxDestination dest = DecodeDestination(provided_address);
+            if (!IsValidDestination(dest)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dash address");
+            }
+            address = provided_address;
+        }
         UniValue result(UniValue::VARR);
         for (const auto& message : pwallet->GetChatMessages(address)) {
             result.push_back(ChatMessageToJSON(*pwallet, message, /*include_body=*/true));
