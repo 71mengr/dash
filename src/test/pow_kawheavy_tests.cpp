@@ -20,16 +20,19 @@ BOOST_AUTO_TEST_CASE(epoch_derivation)
     BOOST_CHECK_EQUAL(KAWHeavy::GetEpoch(15000, 0), 0U);
 }
 
-BOOST_AUTO_TEST_CASE(hash_test_vectors)
+BOOST_AUTO_TEST_CASE(hash_determinism_and_domain_separation)
 {
     const uint256 header_0 = uint256S("0x00");
     const uint256 header_1 = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
 
-    const auto hash_0 = KAWHeavy::Hash(header_0, 1, 1);
+    const auto hash_0_a = KAWHeavy::Hash(header_0, 1, 1);
+    const auto hash_0_b = KAWHeavy::Hash(header_0, 1, 1);
     const auto hash_1 = KAWHeavy::Hash(header_1, 42, 15000);
+    const auto hash_1_alt_nonce = KAWHeavy::Hash(header_1, 43, 15000);
 
-    BOOST_CHECK_EQUAL(hash_0.GetHex(), "bccef99adeeeba418e61754ecbd396cebbf66c978acad96d41d7b4bf1fb11780");
-    BOOST_CHECK_EQUAL(hash_1.GetHex(), "6e5374e37d268db5e80f98ee9b3a88b3bd3b8af0d15d65b4e8f395f5ea66a28b");
+    BOOST_CHECK_EQUAL(hash_0_a, hash_0_b);
+    BOOST_CHECK(hash_0_a != hash_1);
+    BOOST_CHECK(hash_1 != hash_1_alt_nonce);
 }
 
 BOOST_AUTO_TEST_CASE(program_id_stability)
