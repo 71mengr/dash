@@ -1127,9 +1127,9 @@ dash_wallet_CPPFLAGS = $(bitcoin_bin_cppflags)
 dash_wallet_CXXFLAGS = $(bitcoin_bin_cxxflags)
 dash_wallet_LDFLAGS = $(bitcoin_bin_ldflags)
 dash_wallet_LDADD = \
-  $(LIBBITCOIN_NODE) \
   $(LIBBITCOIN_WALLET_TOOL) \
   $(LIBBITCOIN_WALLET) \
+  $(LIBBITCOIN_NODE) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
   $(LIBUNIVALUE) \
