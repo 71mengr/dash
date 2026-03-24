@@ -733,27 +733,41 @@
              </widget>
             </item>
             <item row="6" column="0">
+             <widget class="QLabel" name="labelChatVoiceDraftText">
+              <property name="text">
+               <string>Voice transcript:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="1">
+             <widget class="QTextEdit" name="textChatVoiceDraft">
+              <property name="placeholderText">
+               <string>Paste or type what was spoken in the voice message, then attach it to the draft.</string>
+              </property>
+             </widget>
+            </item>
+            <item row="7" column="0">
              <widget class="QLabel" name="labelChatDraftText">
               <property name="text">
                <string>Draft message:</string>
               </property>
              </widget>
             </item>
-            <item row="6" column="1">
+            <item row="7" column="1">
              <widget class="QTextEdit" name="textChatDraft">
               <property name="placeholderText">
                <string>Write the message that you want to sign and send across the network.</string>
               </property>
              </widget>
             </item>
-            <item row="7" column="0">
+            <item row="8" column="0">
              <widget class="QLabel" name="labelChatHistoryText">
               <property name="text">
                <string>Chat history:</string>
               </property>
              </widget>
             </item>
-            <item row="7" column="1">
+            <item row="8" column="1">
              <widget class="QPlainTextEdit" name="textChatHistory">
               <property name="readOnly">
                <bool>true</bool>
@@ -767,6 +781,20 @@
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayoutChatButtons">
+            <item>
+             <widget class="QPushButton" name="buttonChatVoiceAttach">
+              <property name="text">
+               <string>Attach Voice Note</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonChatVoiceClear">
+              <property name="text">
+               <string>Clear Voice Note</string>
+              </property>
+             </widget>
+            </item>
             <item>
              <widget class="QPushButton" name="buttonChatSend">
               <property name="text">

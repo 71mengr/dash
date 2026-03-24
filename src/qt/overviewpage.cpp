@@ -49,6 +49,8 @@
 Q_DECLARE_METATYPE(interfaces::WalletBalances)
 
 namespace {
+const QString VOICE_NOTE_PREFIX{"[voice-note] "};
+
 std::string GetWalletRpcUri(const WalletModel& wallet_model)
 {
     const QString wallet_name = wallet_model.getWalletName();
@@ -198,6 +200,8 @@ OverviewPage::OverviewPage(QWidget* parent) :
     connect(ui->buttonChatSend, &QPushButton::clicked, this, &OverviewPage::sendChatMessage);
     connect(ui->buttonChatInbox, &QPushButton::clicked, this, &OverviewPage::syncChatInbox);
     connect(ui->buttonChatRefresh, &QPushButton::clicked, this, &OverviewPage::refreshChatMessages);
+    connect(ui->buttonChatVoiceAttach, &QPushButton::clicked, this, &OverviewPage::attachVoiceNoteToDraft);
+    connect(ui->buttonChatVoiceClear, &QPushButton::clicked, this, &OverviewPage::clearVoiceDraft);
     connect(ui->buttonOwnershipGenerate, &QPushButton::clicked, this, &OverviewPage::generateOwnershipProof);
     connect(ui->buttonOwnershipCopy, &QPushButton::clicked, this, &OverviewPage::copyOwnershipProof);
     connect(ui->buttonOwnershipUseGenerated, &QPushButton::clicked, this, &OverviewPage::populateOwnershipVerificationInput);
@@ -574,7 +578,7 @@ void OverviewPage::refreshChatIdentity()
     ui->labelChatRouteValue->setText(clientModel != nullptr && clientModel->getNumConnections() > 0
         ? tr("Connected to %n peer(s); chat packets can be routed once a transport is implemented.", "", clientModel->getNumConnections())
         : tr("Waiting for network peers before routing wallet-authenticated chat."));
-    ui->labelChatVoiceValue->setText(tr("Microphone capture is reserved for a future transport layer; this build exposes the voice-ready workflow in the GUI."));
+    ui->labelChatVoiceValue->setText(tr("Compose a voice note transcript and attach it to your signed chat message as a voice payload."));
     ui->buttonChatSend->setEnabled(!identity_address.startsWith(tr("No receiving address")));
     ui->buttonChatInbox->setEnabled(!identity_address.startsWith(tr("No receiving address")));
 }
@@ -685,7 +689,10 @@ void OverviewPage::refreshChatMessages()
             const UniValue& msg = result[i];
             const QString direction = QString::fromStdString(msg["direction"].get_str()) == "outbound" ? tr("You") : tr("Peer");
             const QString address = QString::fromStdString(msg["address"].get_str());
-            const QString body = QString::fromStdString(msg["message"].get_str());
+            QString body = QString::fromStdString(msg["message"].get_str());
+            if (body.startsWith(VOICE_NOTE_PREFIX)) {
+                body = tr("�� Voice note: %1").arg(body.mid(VOICE_NOTE_PREFIX.size()));
+            }
             lines << tr("%1 • %2: %3").arg(direction, address, body);
         }
         if (lines.isEmpty()) lines << tr("No chat messages saved for this wallet yet.");
@@ -699,6 +706,24 @@ void OverviewPage::openSignMessageDialog()
 {
     const QString address = ui->labelChatIdentityValue->text();
     Q_EMIT signMessageRequested(address.startsWith(tr("No receiving address")) ? QString() : address);
+}
+
+void OverviewPage::attachVoiceNoteToDraft()
+{
+    const QString transcript = ui->textChatVoiceDraft->toPlainText().trimmed();
+    if (transcript.isEmpty()) {
+        QMessageBox::warning(this, tr("Wallet Chat"), tr("Add a voice note transcript before attaching it."));
+        return;
+    }
+
+    ui->textChatDraft->setPlainText(VOICE_NOTE_PREFIX + transcript);
+    ui->labelChatVoiceValue->setText(tr("Voice note attached to the outgoing draft."));
+}
+
+void OverviewPage::clearVoiceDraft()
+{
+    ui->textChatVoiceDraft->clear();
+    ui->labelChatVoiceValue->setText(tr("Compose a voice note transcript and attach it to your signed chat message as a voice payload."));
 }
 
 void OverviewPage::openVerifyMessageDialog()

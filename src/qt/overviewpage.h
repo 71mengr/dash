@@ -86,6 +86,8 @@ private Q_SLOTS:
     void syncChatInbox();
     void pollChatInbox();
     void refreshChatMessages();
+    void attachVoiceNoteToDraft();
+    void clearVoiceDraft();
     void openSignMessageDialog();
     void openVerifyMessageDialog();
     void generateOwnershipProof();
