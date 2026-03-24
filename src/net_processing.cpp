@@ -4211,10 +4211,10 @@ void PeerManagerImpl::ProcessMessage(
                 return;
 
             if (verified_masternode_peer && !tip_mn_list.GetMNByService(addr)) {
-                LogPrintf("ProcessMessage(addr): verified masternode peer=%d relayed non-KYC address=%s, banning for 60 days and disconnecting\n",
+                LogPrintf("ProcessMessage(addr): verified masternode peer=%d relayed non-KYC address=%s, banning relayed IP for 60 days, deactivating peer\n",
                           pfrom.GetId(), addr.ToStringAddrPort());
                 if (m_banman) {
-                    m_banman->Ban(pfrom.addr, NON_KYC_ADDRESS_BAN_TIME_SECONDS);
+                    m_banman->Ban(addr, NON_KYC_ADDRESS_BAN_TIME_SECONDS);
                 }
                 Misbehaving(pfrom.GetId(), 100, "masternode relayed non-KYC address");
                 pfrom.fDisconnect = true;
