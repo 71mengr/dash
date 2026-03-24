@@ -7,10 +7,13 @@
 #include <chainparams.h>
 #include <core_io.h>
 #include <httpserver.h>
+#include <hash.h>
+#include <net_processing.h>
 #include <policy/policy.h>
 #include <rpc/blockchain.h>
 #include <rpc/rawtransaction_util.h>
 #include <rpc/server.h>
+#include <rpc/server_util.h>
 #include <rpc/util.h>
 #include <util/bip32.h>
 #include <util/fees.h>
@@ -2180,14 +2183,42 @@ static UniValue ChatMessageToJSON(const CWallet& wallet, const CWalletChatMessag
     return obj;
 }
 
+static std::vector<unsigned char> EncryptWalletChatPayload(const std::string& plaintext, const std::string& shared_secret, uint64_t nonce)
+{
+    std::vector<unsigned char> encrypted{plaintext.begin(), plaintext.end()};
+    if (encrypted.empty()) return encrypted;
+
+    size_t offset{0};
+    uint32_t round{0};
+    while (offset < encrypted.size()) {
+        const uint256 stream = Hash(shared_secret + "|" + std::to_string(nonce) + "|" + std::to_string(round));
+        const unsigned char* key = stream.begin();
+        const size_t chunk = std::min<size_t>(32, encrypted.size() - offset);
+        for (size_t i = 0; i < chunk; ++i) {
+            encrypted[offset + i] ^= key[i];
+        }
+        offset += chunk;
+        ++round;
+    }
+    return encrypted;
+}
+
+static std::string DecryptWalletChatPayload(const std::vector<unsigned char>& encrypted, const std::string& shared_secret, uint64_t nonce)
+{
+    std::string cipher_text{encrypted.begin(), encrypted.end()};
+    std::vector<unsigned char> plain = EncryptWalletChatPayload(cipher_text, shared_secret, nonce);
+    return std::string{plain.begin(), plain.end()};
+}
+
 static RPCHelpMan chat()
 {
     return RPCHelpMan{"chat",
-        "\nWallet chat storage and sync helpers.\n",
+        "\nWallet chat storage and secure network messaging helpers.\n",
         {
-            {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "One of \"message\", \"list\", \"syncstatus\", \"syncexport\", or \"syncimport\"."},
+            {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "One of \"message\", \"list\", \"networkinbox\", \"syncstatus\", \"syncexport\", or \"syncimport\"."},
             {"arg1", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Command-specific first argument"},
             {"arg2", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Command-specific second argument"},
+            {"arg3", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Optional shared secret used for encrypted network delivery/decryption"},
         },
         RPCResult{
             RPCResult::Type::ANY, "", "Command-specific result",
@@ -2195,6 +2226,8 @@ static RPCHelpMan chat()
         RPCExamples{
             HelpExampleCli("chat", "message XyZAddress \"hello\"")
             + HelpExampleCli("chat", "list XyZAddress")
+            + HelpExampleCli("chat", "message XyZAddress \"hello\" \"shared-secret\"")
+            + HelpExampleCli("chat", "networkinbox XyZAddress \"shared-secret\"")
             + HelpExampleCli("chat", "syncexport")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -2213,11 +2246,33 @@ static RPCHelpMan chat()
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dash address");
         }
-        auto saved = pwallet->AddChatMessage(address, ChatMessageDirection::OUTBOUND, request.params[2].get_str());
+        const std::string body = request.params[2].get_str();
+        auto saved = pwallet->AddChatMessage(address, ChatMessageDirection::OUTBOUND, body);
         if (!saved) {
             throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(saved).original);
         }
-        return ChatMessageToJSON(*pwallet, *saved, /*include_body=*/true);
+        UniValue result = ChatMessageToJSON(*pwallet, *saved, /*include_body=*/true);
+
+        bool relayed{false};
+        if (request.params.size() > 3 && !request.params[3].isNull()) {
+            const std::string shared_secret = request.params[3].get_str();
+            if (shared_secret.size() < 8) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "shared secret must be at least 8 characters");
+            }
+            WalletChatNetMessage net_msg;
+            net_msg.recipient_address = address;
+            net_msg.sender_address = "unknown";
+            net_msg.created_at = GetTime();
+            net_msg.nonce = GetRand<uint64_t>();
+            net_msg.payload = EncryptWalletChatPayload(body, shared_secret, net_msg.nonce);
+            net_msg.mac = Hash(shared_secret + "|" + net_msg.sender_address + "|" + net_msg.recipient_address + "|" + std::to_string(net_msg.created_at) + "|" + HexStr(net_msg.payload));
+
+            const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+            CConnman& connman = EnsureConnman(node);
+            relayed = RelayWalletChatMessage(connman, net_msg);
+        }
+        result.pushKV("network_relayed", relayed);
+        return result;
     }
 
     if (command == "list") {
@@ -2243,6 +2298,42 @@ static RPCHelpMan chat()
         result.pushKV("last_message_id", static_cast<uint64_t>(state.last_message_id));
         result.pushKV("last_sync_time", state.last_sync_time);
         result.pushKV("message_count", static_cast<uint64_t>(pwallet->GetChatMessages().size()));
+        return result;
+    }
+
+    if (command == "networkinbox") {
+        if (request.params.size() < 2) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "chat networkinbox requires <address> [shared_secret]");
+        }
+        const std::string address = request.params[1].get_str();
+        const CTxDestination dest = DecodeDestination(address);
+        if (!IsValidDestination(dest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dash address");
+        }
+        std::optional<std::string> shared_secret = std::nullopt;
+        if (request.params.size() > 2 && !request.params[2].isNull()) {
+            shared_secret = request.params[2].get_str();
+        }
+
+        const auto inbox_messages = ConsumeWalletChatMessages(address, /*max_messages=*/100);
+        UniValue result(UniValue::VARR);
+        for (const auto& net_msg : inbox_messages) {
+            UniValue row(UniValue::VOBJ);
+            row.pushKV("sender_address", net_msg.sender_address);
+            row.pushKV("recipient_address", net_msg.recipient_address);
+            row.pushKV("created_at", net_msg.created_at);
+            row.pushKV("nonce", net_msg.nonce);
+            row.pushKV("payload_hex", HexStr(net_msg.payload));
+            if (shared_secret) {
+                const uint256 mac = Hash(*shared_secret + "|" + net_msg.sender_address + "|" + net_msg.recipient_address + "|" + std::to_string(net_msg.created_at) + "|" + HexStr(net_msg.payload));
+                const bool mac_valid = (mac == net_msg.mac);
+                row.pushKV("mac_valid", mac_valid);
+                if (mac_valid) {
+                    row.pushKV("message", DecryptWalletChatPayload(net_msg.payload, *shared_secret, net_msg.nonce));
+                }
+            }
+            result.push_back(row);
+        }
         return result;
     }
 

@@ -15,10 +15,16 @@ The wallet RPC now exposes a `chat` command for storing wallet-scoped chat histo
 - If the wallet is locked, encrypted messages remain unreadable until the wallet is unlocked again.
 - Sync export returns the serialized wallet chat records as a hex blob. This is intended for syncing cloned copies of the same wallet data. Encrypted payloads require the same wallet master key to be readable after import.
 
+## Network delivery and security
+
+- `chat message <address> "<text>" "<shared_secret>"` stores the outbound wallet record and relays an encrypted network packet to connected peers.
+- `chat networkinbox <address> "<shared_secret>"` consumes pending inbound packets for the recipient address and verifies/decrypts them.
+- Network payload confidentiality/integrity is provided through shared-secret encryption plus MAC verification in the wallet RPC layer.
+
 ## Important limitations
 
-- This change provides secure wallet-local persistence and backup/sync serialization, but it does not yet broadcast messages over the Dash network.
-- End-to-end transport encryption with a remote counterparty address is not implemented in this patch; current encryption covers wallet storage at rest.
+- Delivery is best-effort over connected peers and does not currently include ACK/retry semantics.
+- The shared secret must be exchanged out-of-band by participants and rotated by application policy.
 
 ## Design note
 

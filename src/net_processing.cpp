@@ -71,11 +71,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <future>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <unordered_set>
 #include <typeinfo>
 
 using node::ReadBlockFromDisk;
@@ -99,11 +102,52 @@ static_assert(INBOUND_PEER_TX_DELAY >= MAX_GETDATA_RANDOM_DELAY,
 "To preserve security, MAX_GETDATA_RANDOM_DELAY should not exceed INBOUND_PEER_DELAY");
 /** Limit to avoid sending big packets. Not used in processing incoming GETDATA for compatibility */
 static const unsigned int MAX_GETDATA_SZ = 1000;
+static constexpr size_t MAX_WALLET_CHAT_NET_PAYLOAD_SIZE{4096};
+static constexpr size_t MAX_WALLET_CHAT_INBOX_PER_RECIPIENT{256};
 
 /** How long to cache transactions in mapRelay for normal relay */
 static constexpr auto RELAY_TX_CACHE_TIME = 15min;
 /** How long a transaction has to be in the mempool before it can unconditionally be relayed (even when not in mapRelay). */
 static constexpr auto UNCONDITIONAL_RELAY_DELAY = 2min;
+
+namespace {
+Mutex g_wallet_chat_net_mutex;
+std::map<std::string, std::deque<WalletChatNetMessage>> g_wallet_chat_inbox GUARDED_BY(g_wallet_chat_net_mutex);
+std::unordered_set<uint256, SaltedUint256Hasher> g_wallet_chat_seen GUARDED_BY(g_wallet_chat_net_mutex);
+} // namespace
+
+bool RelayWalletChatMessage(CConnman& connman, const WalletChatNetMessage& message)
+{
+    if (message.recipient_address.empty() || message.sender_address.empty() || message.payload.empty() || message.payload.size() > MAX_WALLET_CHAT_NET_PAYLOAD_SIZE) {
+        return false;
+    }
+
+    bool sent{false};
+    connman.ForEachNode([&](CNode* pnode) {
+        connman.PushMessage(pnode, CNetMsgMaker(pnode->GetCommonVersion()).Make(NetMsgType::WALLETCHAT, message));
+        sent = true;
+    });
+    return sent;
+}
+
+std::vector<WalletChatNetMessage> ConsumeWalletChatMessages(const std::string& recipient_address, size_t max_messages)
+{
+    if (recipient_address.empty() || max_messages == 0) return {};
+
+    LOCK(g_wallet_chat_net_mutex);
+    std::vector<WalletChatNetMessage> out;
+    auto it = g_wallet_chat_inbox.find(recipient_address);
+    if (it == g_wallet_chat_inbox.end()) return out;
+
+    while (!it->second.empty() && out.size() < max_messages) {
+        out.push_back(std::move(it->second.front()));
+        it->second.pop_front();
+    }
+    if (it->second.empty()) {
+        g_wallet_chat_inbox.erase(it);
+    }
+    return out;
+}
 /** Headers download timeout.
  *  Timeout = base + per_header * (expected number of headers) */
 static constexpr auto HEADERS_DOWNLOAD_TIMEOUT_BASE = 15min;
@@ -5464,6 +5508,38 @@ void PeerManagerImpl::ProcessMessage(
                     state->m_object_download.m_object_announced.erase(inv);
                 }
             }
+        }
+        return;
+    }
+
+    if (msg_type == NetMsgType::WALLETCHAT) {
+        WalletChatNetMessage message;
+        vRecv >> message;
+        if (message.version != WalletChatNetMessage::CURRENT_VERSION ||
+            message.recipient_address.empty() || message.sender_address.empty() ||
+            message.payload.empty() || message.payload.size() > MAX_WALLET_CHAT_NET_PAYLOAD_SIZE) {
+            Misbehaving(pfrom.GetId(), /*howmuch=*/10, "invalid-wallet-chat-message");
+            return;
+        }
+
+        const uint256 msg_hash = SerializeHash(message);
+        bool relay{false};
+        {
+            LOCK(g_wallet_chat_net_mutex);
+            auto [_, inserted] = g_wallet_chat_seen.emplace(msg_hash);
+            if (inserted) {
+                auto& inbox = g_wallet_chat_inbox[message.recipient_address];
+                if (inbox.size() >= MAX_WALLET_CHAT_INBOX_PER_RECIPIENT) inbox.pop_front();
+                inbox.push_back(message);
+                relay = true;
+            }
+        }
+
+        if (relay) {
+            m_connman.ForEachNode([&](CNode* pnode) {
+                if (pnode->GetId() == pfrom.GetId()) return;
+                m_connman.PushMessage(pnode, CNetMsgMaker(pnode->GetCommonVersion()).Make(NetMsgType::WALLETCHAT, message));
+            });
         }
         return;
     }

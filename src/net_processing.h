@@ -13,6 +13,8 @@
 #include <msg_result.h>
 
 #include <atomic>
+#include <string>
+#include <vector>
 
 class AddrMan;
 class CActiveMasternodeManager;
@@ -191,5 +193,26 @@ public:
     virtual void InterruptHandlers() = 0;
     virtual void ScheduleHandlers(CScheduler& scheduler) = 0;
 };
+
+struct WalletChatNetMessage
+{
+    static constexpr uint8_t CURRENT_VERSION{1};
+
+    uint8_t version{CURRENT_VERSION};
+    std::string recipient_address;
+    std::string sender_address;
+    int64_t created_at{0};
+    uint64_t nonce{0};
+    std::vector<unsigned char> payload;
+    uint256 mac;
+
+    SERIALIZE_METHODS(WalletChatNetMessage, obj)
+    {
+        READWRITE(obj.version, obj.recipient_address, obj.sender_address, obj.created_at, obj.nonce, obj.payload, obj.mac);
+    }
+};
+
+bool RelayWalletChatMessage(CConnman& connman, const WalletChatNetMessage& message);
+std::vector<WalletChatNetMessage> ConsumeWalletChatMessages(const std::string& recipient_address, size_t max_messages);
 
 #endif // BITCOIN_NET_PROCESSING_H
