@@ -4197,6 +4197,10 @@ void PeerManagerImpl::ProcessMessage(
         }
         peer->m_addr_token_timestamp = current_time;
 
+        constexpr int64_t NON_KYC_ADDRESS_BAN_TIME_SECONDS = 60 * 24 * 60 * 60; // 60 days
+        const bool verified_masternode_peer = !pfrom.GetVerifiedProRegTxHash().IsNull();
+        const auto tip_mn_list = verified_masternode_peer ? Assert(m_dmnman)->GetListAtChainTip() : CDeterministicMNList{};
+
         const bool rate_limited = !pfrom.HasPermission(NetPermissionFlags::Addr);
         uint64_t num_proc = 0;
         uint64_t num_rate_limit = 0;
@@ -4205,6 +4209,17 @@ void PeerManagerImpl::ProcessMessage(
         {
             if (interruptMsgProc)
                 return;
+
+            if (verified_masternode_peer && !tip_mn_list.GetMNByService(addr)) {
+                LogPrintf("ProcessMessage(addr): verified masternode peer=%d relayed non-KYC address=%s, banning for 60 days and disconnecting\n",
+                          pfrom.GetId(), addr.ToStringAddrPort());
+                if (m_banman) {
+                    m_banman->Ban(pfrom.addr, NON_KYC_ADDRESS_BAN_TIME_SECONDS);
+                }
+                Misbehaving(pfrom.GetId(), 100, "masternode relayed non-KYC address");
+                pfrom.fDisconnect = true;
+                return;
+            }
 
             // Apply rate limiting.
             if (peer->m_addr_token_bucket < 1.0) {
@@ -4245,7 +4260,10 @@ void PeerManagerImpl::ProcessMessage(
         LogPrint(BCLog::NET, "Received addr: %u addresses (%u processed, %u rate-limited) from peer=%d\n",
                  vAddr.size(), num_proc, num_rate_limit, pfrom.GetId());
 
-        m_addrman.Add(vAddrOk, pfrom.addr, 2h);
+        // Addresses announced by authenticated masternodes are treated as network-verified,
+        // so don't apply the usual gossip time penalty when storing them.
+        const auto addr_time_penalty = pfrom.GetVerifiedProRegTxHash().IsNull() ? 2h : 0s;
+        m_addrman.Add(vAddrOk, pfrom.addr, addr_time_penalty);
         if (vAddr.size() < 1000) peer->m_getaddr_sent = false;
 
         // AddrFetch: Require multiple addresses to avoid disconnecting on self-announcements
