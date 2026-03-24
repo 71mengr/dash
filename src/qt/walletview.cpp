@@ -115,6 +115,7 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     connect(overviewPage, &OverviewPage::outOfSyncWarningClicked, this, &WalletView::outOfSyncWarningClicked);
     connect(overviewPage, &OverviewPage::signMessageRequested, this, &WalletView::gotoSignMessageTab);
     connect(overviewPage, &OverviewPage::verifyMessageRequested, this, &WalletView::gotoVerifyMessageTab);
+    connect(overviewPage, &OverviewPage::message, this, &WalletView::message);
 
     connect(sendCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);
     connect(coinJoinCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);

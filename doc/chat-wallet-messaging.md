@@ -24,8 +24,8 @@ The wallet RPC now exposes a `chat` command for storing wallet-scoped chat histo
 
 ## Important limitations
 
-- Retry is opportunistic and driven by wallet chat RPC activity (send/inbox polling), not by a dedicated background scheduler.
-- The shared secret must be exchanged out-of-band by participants and rotated by application policy.
+- The initial shared secret still needs a secure bootstrap channel between participants.
+- Secret ratcheting is deterministic (`shared_secret_next` / `next_shared_secret`) and should remain in sync across clients for uninterrupted decryption.
 
 ## Design note
 

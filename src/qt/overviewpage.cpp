@@ -22,6 +22,7 @@
 #include <coinjoin/options.h>
 #include <interfaces/coinjoin.h>
 #include <interfaces/node.h>
+#include <node/interface_ui.h>
 #include <univalue.h>
 
 #include <algorithm>
@@ -222,6 +223,10 @@ OverviewPage::OverviewPage(QWidget* parent) :
 
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, [this]{ coinJoinStatus(); });
+
+    chatInboxTimer = new QTimer(this);
+    connect(chatInboxTimer, &QTimer::timeout, this, &OverviewPage::pollChatInbox);
+    chatInboxTimer->start(5000);
 }
 
 void OverviewPage::handleTransactionClicked(const QModelIndex &index)
@@ -594,7 +599,12 @@ void OverviewPage::sendChatMessage()
     }
 
     try {
-        walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
+        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
+        if (result.isObject() && result.exists("shared_secret_next")) {
+            const QString next_secret = QString::fromStdString(result["shared_secret_next"].get_str());
+            ui->editChatEndpoint->setText(next_secret);
+            ui->labelChatRouteValue->setText(tr("Shared secret rotated automatically for the next chat message."));
+        }
         ui->textChatDraft->clear();
         refreshChatMessages();
     } catch (const std::exception& e) {
@@ -605,9 +615,12 @@ void OverviewPage::sendChatMessage()
 void OverviewPage::syncChatInbox()
 {
     if (!walletModel) return;
+    const bool interactive = !m_chatInboxPolling;
     const QString identity_address = ui->labelChatIdentityValue->text().trimmed();
     if (identity_address.isEmpty() || identity_address.startsWith(tr("No receiving address"))) {
-        QMessageBox::warning(this, tr("Wallet Chat"), tr("A wallet identity address is required before inbox sync."));
+        if (interactive) {
+            QMessageBox::warning(this, tr("Wallet Chat"), tr("A wallet identity address is required before inbox sync."));
+        }
         return;
     }
 
@@ -630,12 +643,29 @@ void OverviewPage::syncChatInbox()
                 ? QString::fromStdString(msg["message"].get_str())
                 : tr("[encrypted payload]");
             network_lines << tr("↳ %1: %2").arg(sender, body);
+            Q_EMIT message(tr("Incoming chat message"), tr("%1: %2").arg(sender, body), CClientUIInterface::MSG_INFORMATION);
+            if (msg.exists("next_shared_secret")) {
+                ui->editChatEndpoint->setText(QString::fromStdString(msg["next_shared_secret"].get_str()));
+            }
         }
         ui->labelChatRouteValue->setText(network_lines.join("\n"));
         refreshChatMessages();
     } catch (const std::exception& e) {
-        QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
+        if (interactive) {
+            QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
+        }
     }
+}
+
+void OverviewPage::pollChatInbox()
+{
+    if (!walletModel || !isVisible()) return;
+    const QString identity_address = ui->labelChatIdentityValue->text().trimmed();
+    if (identity_address.isEmpty() || identity_address.startsWith(tr("No receiving address"))) return;
+
+    m_chatInboxPolling = true;
+    syncChatInbox();
+    m_chatInboxPolling = false;
 }
 
 void OverviewPage::refreshChatMessages()

@@ -49,9 +49,11 @@ Q_SIGNALS:
     void outOfSyncWarningClicked();
     void signMessageRequested(const QString& address);
     void verifyMessageRequested(const QString& address);
+    void message(const QString& title, const QString& message, unsigned int style);
 
 private:
     QTimer* timer{nullptr};
+    QTimer* chatInboxTimer{nullptr};
     Ui::OverviewPage *ui;
     ClientModel* clientModel{nullptr};
     WalletModel* walletModel{nullptr};
@@ -60,6 +62,7 @@ private:
     BitcoinUnit m_display_bitcoin_unit;
     bool fShowAdvancedCJUI;
     int cachedNumISLocks{-1};
+    bool m_chatInboxPolling{false};
 
     TxViewDelegate *txdelegate;
     std::unique_ptr<TransactionFilterProxy> filter;
@@ -81,6 +84,7 @@ private Q_SLOTS:
     void refreshChatIdentity();
     void sendChatMessage();
     void syncChatInbox();
+    void pollChatInbox();
     void refreshChatMessages();
     void openSignMessageDialog();
     void openVerifyMessageDialog();

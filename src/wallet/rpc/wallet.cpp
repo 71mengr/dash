@@ -2210,6 +2210,11 @@ static std::string DecryptWalletChatPayload(const std::vector<unsigned char>& en
     return std::string{plain.begin(), plain.end()};
 }
 
+static std::string DeriveNextWalletChatSecret(const std::string& shared_secret, uint64_t nonce, const std::vector<unsigned char>& payload)
+{
+    return Hash(shared_secret + "|" + std::to_string(nonce) + "|" + HexStr(payload)).ToString();
+}
+
 static RPCHelpMan chat()
 {
     return RPCHelpMan{"chat",
@@ -2271,6 +2276,7 @@ static RPCHelpMan chat()
             CConnman& connman = EnsureConnman(node);
             relayed = RelayWalletChatMessage(connman, net_msg);
             RetryWalletChatMessages(connman, GetTime());
+            result.pushKV("shared_secret_next", DeriveNextWalletChatSecret(shared_secret, net_msg.nonce, net_msg.payload));
         }
         result.pushKV("network_relayed", relayed);
         return result;
@@ -2320,6 +2326,7 @@ static RPCHelpMan chat()
         RetryWalletChatMessages(connman, GetTime());
 
         const auto inbox_messages = ConsumeWalletChatMessages(address, /*max_messages=*/100);
+        std::string rolling_shared_secret = shared_secret.value_or("");
         UniValue result(UniValue::VARR);
         for (const auto& net_msg : inbox_messages) {
             UniValue row(UniValue::VOBJ);
@@ -2329,11 +2336,13 @@ static RPCHelpMan chat()
             row.pushKV("nonce", net_msg.nonce);
             row.pushKV("payload_hex", HexStr(net_msg.payload));
             if (shared_secret) {
-                const uint256 mac = Hash(*shared_secret + "|" + net_msg.sender_address + "|" + net_msg.recipient_address + "|" + std::to_string(net_msg.created_at) + "|" + HexStr(net_msg.payload));
+                const uint256 mac = Hash(rolling_shared_secret + "|" + net_msg.sender_address + "|" + net_msg.recipient_address + "|" + std::to_string(net_msg.created_at) + "|" + HexStr(net_msg.payload));
                 const bool mac_valid = (mac == net_msg.mac);
                 row.pushKV("mac_valid", mac_valid);
                 if (mac_valid) {
-                    row.pushKV("message", DecryptWalletChatPayload(net_msg.payload, *shared_secret, net_msg.nonce));
+                    row.pushKV("message", DecryptWalletChatPayload(net_msg.payload, rolling_shared_secret, net_msg.nonce));
+                    rolling_shared_secret = DeriveNextWalletChatSecret(rolling_shared_secret, net_msg.nonce, net_msg.payload);
+                    row.pushKV("next_shared_secret", rolling_shared_secret);
                 }
             }
             result.push_back(row);
