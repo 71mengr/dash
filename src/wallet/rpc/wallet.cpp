@@ -400,7 +400,7 @@ static RPCHelpMan importkyccredential()
     };
 }
 
-static RPCHelpMan localverify()
+RPCHelpMan localverify()
 {
     return RPCHelpMan{"local-verify",
         "\nRun local verification for the wallet using the provided identity fields.\n"
