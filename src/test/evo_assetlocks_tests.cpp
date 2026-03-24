@@ -19,6 +19,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <limits>
+
 
 //
 // Helper: create two dummy transactions, each with
@@ -425,19 +427,19 @@ BOOST_FIXTURE_TEST_CASE(evo_assetunlock_amount_accounting, TestChain100Setup)
     BOOST_CHECK_EQUAL(index, 0x001122334455667788L);
 
     {
-        CMutableTransaction tx_bad_fee{tx};
-        const auto unlock_payload = GetTxPayload<CAssetUnlockPayload>(CTransaction(tx_bad_fee));
+        CMutableTransaction tx_large_fee{tx};
+        const auto unlock_payload = GetTxPayload<CAssetUnlockPayload>(CTransaction(tx_large_fee));
         BOOST_REQUIRE(unlock_payload.has_value());
-        SetTxPayload(tx_bad_fee, CAssetUnlockPayload{
+        SetTxPayload(tx_large_fee, CAssetUnlockPayload{
             unlock_payload->getVersion(),
             unlock_payload->getIndex(),
-            MAX_MONEY + 1,
+            std::numeric_limits<uint32_t>::max(),
             unlock_payload->getRequestedHeight(),
             unlock_payload->getQuorumHash(),
             unlock_payload->getQuorumSig()});
 
-        BOOST_CHECK(!GetAssetUnlockAmount(CTransaction(tx_bad_fee), to_unlock, index, tx_state));
-        BOOST_CHECK_EQUAL(tx_state.GetRejectReason(), "failed-creditpool-unlock-amount-outofrange");
+        BOOST_CHECK(GetAssetUnlockAmount(CTransaction(tx_large_fee), to_unlock, index, tx_state));
+        BOOST_CHECK_EQUAL(to_unlock, 6'344'967'295);
     }
 
     {
