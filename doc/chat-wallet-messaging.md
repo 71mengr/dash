@@ -20,10 +20,11 @@ The wallet RPC now exposes a `chat` command for storing wallet-scoped chat histo
 - `chat message <address> "<text>" "<shared_secret>"` stores the outbound wallet record and relays an encrypted network packet to connected peers.
 - `chat networkinbox <address> "<shared_secret>"` consumes pending inbound packets for the recipient address and verifies/decrypts them.
 - Network payload confidentiality/integrity is provided through shared-secret encryption plus MAC verification in the wallet RPC layer.
+- Receivers send a network ACK (`wchatack`) for each valid inbound packet, and senders keep a bounded retry queue until ACK arrives.
 
 ## Important limitations
 
-- Delivery is best-effort over connected peers and does not currently include ACK/retry semantics.
+- Retry is opportunistic and driven by wallet chat RPC activity (send/inbox polling), not by a dedicated background scheduler.
 - The shared secret must be exchanged out-of-band by participants and rotated by application policy.
 
 ## Design note

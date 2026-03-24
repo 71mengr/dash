@@ -92,6 +92,7 @@ MAKE_MSG(GETQUORUMROTATIONINFO, "getqrinfo");
 MAKE_MSG(QUORUMROTATIONINFO, "qrinfo");
 MAKE_MSG(PLATFORMBAN, "platformban");
 MAKE_MSG(WALLETCHAT, "wchatmsg");
+MAKE_MSG(WALLETCHATACK, "wchatack");
 }; // namespace NetMsgType
 
 /** All known message types. Keep this in the same order as the list of
@@ -175,6 +176,7 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::QUORUMROTATIONINFO,
     NetMsgType::PLATFORMBAN,
     NetMsgType::WALLETCHAT,
+    NetMsgType::WALLETCHATACK,
 };
 const static std::vector<std::string> allNetMessageTypesVec(std::begin(allNetMessageTypes), std::end(allNetMessageTypes));
 
@@ -212,6 +214,7 @@ const static std::string netMessageTypesViolateBlocksOnly[] = {
     NetMsgType::QWATCH,
     NetMsgType::TX,
     NetMsgType::WALLETCHAT,
+    NetMsgType::WALLETCHATACK,
 };
 const static std::set<std::string> netMessageTypesViolateBlocksOnlySet(std::begin(netMessageTypesViolateBlocksOnly), std::end(netMessageTypesViolateBlocksOnly));
 

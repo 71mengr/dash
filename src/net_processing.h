@@ -212,7 +212,20 @@ struct WalletChatNetMessage
     }
 };
 
+struct WalletChatAck
+{
+    static constexpr uint8_t CURRENT_VERSION{1};
+    uint8_t version{CURRENT_VERSION};
+    uint256 message_id;
+
+    SERIALIZE_METHODS(WalletChatAck, obj)
+    {
+        READWRITE(obj.version, obj.message_id);
+    }
+};
+
 bool RelayWalletChatMessage(CConnman& connman, const WalletChatNetMessage& message);
 std::vector<WalletChatNetMessage> ConsumeWalletChatMessages(const std::string& recipient_address, size_t max_messages);
+void RetryWalletChatMessages(CConnman& connman, int64_t now);
 
 #endif // BITCOIN_NET_PROCESSING_H

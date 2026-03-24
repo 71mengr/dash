@@ -2270,6 +2270,7 @@ static RPCHelpMan chat()
             const node::NodeContext& node = EnsureAnyNodeContext(request.context);
             CConnman& connman = EnsureConnman(node);
             relayed = RelayWalletChatMessage(connman, net_msg);
+            RetryWalletChatMessages(connman, GetTime());
         }
         result.pushKV("network_relayed", relayed);
         return result;
@@ -2314,6 +2315,9 @@ static RPCHelpMan chat()
         if (request.params.size() > 2 && !request.params[2].isNull()) {
             shared_secret = request.params[2].get_str();
         }
+        const node::NodeContext& node = EnsureAnyNodeContext(request.context);
+        CConnman& connman = EnsureConnman(node);
+        RetryWalletChatMessages(connman, GetTime());
 
         const auto inbox_messages = ConsumeWalletChatMessages(address, /*max_messages=*/100);
         UniValue result(UniValue::VARR);

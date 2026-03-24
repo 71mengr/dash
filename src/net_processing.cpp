@@ -104,6 +104,8 @@ static_assert(INBOUND_PEER_TX_DELAY >= MAX_GETDATA_RANDOM_DELAY,
 static const unsigned int MAX_GETDATA_SZ = 1000;
 static constexpr size_t MAX_WALLET_CHAT_NET_PAYLOAD_SIZE{4096};
 static constexpr size_t MAX_WALLET_CHAT_INBOX_PER_RECIPIENT{256};
+static constexpr int64_t WALLET_CHAT_RETRY_INTERVAL_SECONDS{5};
+static constexpr uint8_t WALLET_CHAT_MAX_RETRIES{5};
 
 /** How long to cache transactions in mapRelay for normal relay */
 static constexpr auto RELAY_TX_CACHE_TIME = 15min;
@@ -114,6 +116,12 @@ namespace {
 Mutex g_wallet_chat_net_mutex;
 std::map<std::string, std::deque<WalletChatNetMessage>> g_wallet_chat_inbox GUARDED_BY(g_wallet_chat_net_mutex);
 std::unordered_set<uint256, SaltedUint256Hasher> g_wallet_chat_seen GUARDED_BY(g_wallet_chat_net_mutex);
+struct WalletChatPendingRelay {
+    WalletChatNetMessage message;
+    int64_t next_retry{0};
+    uint8_t attempts{0};
+};
+std::map<uint256, WalletChatPendingRelay> g_wallet_chat_pending GUARDED_BY(g_wallet_chat_net_mutex);
 } // namespace
 
 bool RelayWalletChatMessage(CConnman& connman, const WalletChatNetMessage& message)
@@ -123,10 +131,19 @@ bool RelayWalletChatMessage(CConnman& connman, const WalletChatNetMessage& messa
     }
 
     bool sent{false};
+    const uint256 message_id = SerializeHash(message);
     connman.ForEachNode([&](CNode* pnode) {
         connman.PushMessage(pnode, CNetMsgMaker(pnode->GetCommonVersion()).Make(NetMsgType::WALLETCHAT, message));
         sent = true;
     });
+    if (sent) {
+        LOCK(g_wallet_chat_net_mutex);
+        WalletChatPendingRelay pending;
+        pending.message = message;
+        pending.next_retry = GetTime() + WALLET_CHAT_RETRY_INTERVAL_SECONDS;
+        pending.attempts = 1;
+        g_wallet_chat_pending[message_id] = std::move(pending);
+    }
     return sent;
 }
 
@@ -147,6 +164,36 @@ std::vector<WalletChatNetMessage> ConsumeWalletChatMessages(const std::string& r
         g_wallet_chat_inbox.erase(it);
     }
     return out;
+}
+
+void RetryWalletChatMessages(CConnman& connman, int64_t now)
+{
+    LOCK(g_wallet_chat_net_mutex);
+    for (auto it = g_wallet_chat_pending.begin(); it != g_wallet_chat_pending.end();) {
+        auto& pending = it->second;
+        if (pending.attempts >= WALLET_CHAT_MAX_RETRIES) {
+            it = g_wallet_chat_pending.erase(it);
+            continue;
+        }
+        if (pending.next_retry > now) {
+            ++it;
+            continue;
+        }
+
+        bool sent{false};
+        connman.ForEachNode([&](CNode* pnode) {
+            connman.PushMessage(pnode, CNetMsgMaker(pnode->GetCommonVersion()).Make(NetMsgType::WALLETCHAT, pending.message));
+            sent = true;
+        });
+
+        if (!sent) {
+            ++it;
+            continue;
+        }
+        pending.attempts++;
+        pending.next_retry = now + WALLET_CHAT_RETRY_INTERVAL_SECONDS;
+        ++it;
+    }
 }
 /** Headers download timeout.
  *  Timeout = base + per_header * (expected number of headers) */
@@ -5541,6 +5588,21 @@ void PeerManagerImpl::ProcessMessage(
                 m_connman.PushMessage(pnode, CNetMsgMaker(pnode->GetCommonVersion()).Make(NetMsgType::WALLETCHAT, message));
             });
         }
+        WalletChatAck ack;
+        ack.message_id = msg_hash;
+        m_connman.PushMessage(&pfrom, CNetMsgMaker(pfrom.GetCommonVersion()).Make(NetMsgType::WALLETCHATACK, ack));
+        return;
+    }
+
+    if (msg_type == NetMsgType::WALLETCHATACK) {
+        WalletChatAck ack;
+        vRecv >> ack;
+        if (ack.version != WalletChatAck::CURRENT_VERSION) {
+            Misbehaving(pfrom.GetId(), /*howmuch=*/10, "invalid-wallet-chat-ack");
+            return;
+        }
+        LOCK(g_wallet_chat_net_mutex);
+        g_wallet_chat_pending.erase(ack.message_id);
         return;
     }
 

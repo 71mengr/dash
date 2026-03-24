@@ -300,6 +300,7 @@ extern const char* GETQUORUMROTATIONINFO;
 extern const char* QUORUMROTATIONINFO;
 extern const char* PLATFORMBAN;
 extern const char* WALLETCHAT;
+extern const char* WALLETCHATACK;
 };
 
 /* Get a vector of all valid message types (see above) */

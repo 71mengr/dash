@@ -931,7 +931,7 @@ const std::array<std::string, 33> V2_BITCOIN_IDS = {
  * by a protocol upgrade, the old message is no longer supported by the client
  * and a new slot wasn't already allotted for the message.
  */
-const std::array<std::string, 42> V2_DASH_IDS = {
+const std::array<std::string, 43> V2_DASH_IDS = {
     NetMsgType::SPORK,
     NetMsgType::GETSPORKS,
     NetMsgType::SENDDSQUEUE,
@@ -973,7 +973,8 @@ const std::array<std::string, 42> V2_DASH_IDS = {
     NetMsgType::GETQUORUMROTATIONINFO,
     NetMsgType::QUORUMROTATIONINFO,
     NetMsgType::PLATFORMBAN,
-    NetMsgType::WALLETCHAT
+    NetMsgType::WALLETCHAT,
+    NetMsgType::WALLETCHATACK
 };
 
  /** Explicit version requirements for Dash v2 short IDs added after baseline.
