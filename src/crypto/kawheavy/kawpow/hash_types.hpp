@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <kawpow/hash_types.h>
+#include <crypto/kawheavy/kawpow/hash_types.h>
 
 namespace kawpow
 {

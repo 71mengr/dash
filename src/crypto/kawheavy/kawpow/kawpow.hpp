@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include <kawpow/kawpow.h>
-#include <kawpow/hash_types.hpp>
+#include <crypto/kawheavy/kawpow/kawpow.h>
+#include <crypto/kawheavy/kawpow/hash_types.hpp>
 
 #include <cstdint>
 #include <cstring>
