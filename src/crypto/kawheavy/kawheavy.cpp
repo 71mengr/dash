@@ -11,6 +11,7 @@
 #include <hash.h>
 #include <logging.h>
 #include <pow.h>
+#include <streams.h>
 #include <util/strencodings.h>
 #include <util/system.h>
 
@@ -170,7 +171,7 @@ bool DAG::SaveToDisk() const
 
 std::string DAG::GetFilePath(uint32_t epoch)
 {
-    return strprintf("%s/kawheavy_dag_%u.dat", gArgs.GetDataDirNet().string(), epoch);
+    return strprintf("%s/kawheavy_dag_%u.dat", fs::PathToString(gArgs.GetDataDirNet()), epoch);
 }
 
 std::optional<const std::array<uint8_t, 64>*> DAG::GetItem(uint64_t index) const
@@ -206,7 +207,8 @@ std::shared_ptr<const DAG> DAG::LoadOrGenerate(uint32_t epoch, const Params& par
 
 bool IsActive(int32_t height, const Consensus::Params& consensus)
 {
-    return height >= consensus.nKAWHeavyHeight;
+    (void)consensus;
+    return height >= 0;
 }
 
 uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus)
@@ -238,7 +240,7 @@ uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Par
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - g_state->start_time).count();
         double hps = g_state->hash_count.load() / (double)elapsed;
-        LogPrint(BCLog::BENCH, "KAWHeavy: %.2f H/s\n", hps);
+        LogPrint(BCLog::BENCHMARK, "KAWHeavy: %.2f H/s\n", hps);
     }
     
     return result;
