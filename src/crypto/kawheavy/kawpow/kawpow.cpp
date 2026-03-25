@@ -4,7 +4,7 @@
 
 #include "kawpow-internal.hpp"
 
-#include "../support/attributes.h"
+#include <attributes.h>
 #include "bit_manipulation.h"
 #include "endianness.hpp"
 #include "primes.h"
