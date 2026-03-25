@@ -6,7 +6,6 @@
 
 #include <pow/kawheavy/kawheavy_kawpow.h>
 
-#include <crypto/x11/sph_blake.h>
 #include <llvm-c-20/llvm-c/blake3.h>
 #include <uint256.h>
 
@@ -14,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <dlfcn.h>
+#include <stdexcept>
 #include <mutex>
 
 namespace KAWHeavy {
@@ -67,30 +67,18 @@ bool TryExternalHybridHash(const uint256& header_hash, uint32_t nonce, int32_t h
 uint256 FinalMixWithBlake3(const uint256& kheavy_state)
 {
     const Blake3Api& api = GetBlake3Api();
-    if (api.init != nullptr && api.update != nullptr && api.finalize != nullptr) {
-        llvm_blake3_hasher hasher{};
-        std::array<uint8_t, LLVM_BLAKE3_OUT_LEN> blake3_out{};
-        api.init(&hasher);
-        api.update(&hasher, kheavy_state.begin(), uint256::size());
-        api.finalize(&hasher, blake3_out.data(), blake3_out.size());
-
-        uint256 out;
-        static_assert(uint256::size() == LLVM_BLAKE3_OUT_LEN, "BLAKE3 output must be 32 bytes");
-        std::copy(blake3_out.begin(), blake3_out.end(), out.begin());
-        return out;
+    if (api.init == nullptr || api.update == nullptr || api.finalize == nullptr) {
+        throw std::runtime_error("BLAKE3 symbols are unavailable: llvm_blake3_hasher_init/update/finalize");
     }
 
-    // Fallback for environments without LLVM's BLAKE3 symbols.
-    sph_blake512_context ctx_blake{};
-    std::array<unsigned char, 64> blake_out{};
-    sph_blake512_init(&ctx_blake);
-    sph_blake512(&ctx_blake, kheavy_state.begin(), uint256::size());
-    sph_blake512_close(&ctx_blake, blake_out.data());
-
+    llvm_blake3_hasher hasher{};
+    std::array<uint8_t, LLVM_BLAKE3_OUT_LEN> blake3_out{};
+    api.init(&hasher);
+    api.update(&hasher, kheavy_state.begin(), uint256::size());
+    api.finalize(&hasher, blake3_out.data(), blake3_out.size());
     uint256 out;
-    for (size_t i = 0; i < uint256::size(); ++i) {
-        out.begin()[i] = blake_out[i] ^ blake_out[i + uint256::size()];
-    }
+    static_assert(uint256::size() == LLVM_BLAKE3_OUT_LEN, "BLAKE3 output must be 32 bytes");
+    std::copy(blake3_out.begin(), blake3_out.end(), out.begin());
     return out;
 }
 
