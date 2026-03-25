@@ -757,6 +757,7 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/kawheavy/kheavyhash_wrapper.h \
   crypto/kawheavy/kawpow/hash_types.h \
   crypto/kawheavy/kawpow/hash_types.hpp \
+  crypto/kawheavy/kawpow/endianness.hpp \
   crypto/kawheavy/kawpow/kawpow-internal.hpp \
   crypto/kawheavy/kawpow/kawpow.h \
   crypto/hkdf_sha256_32.cpp \
