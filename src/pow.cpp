@@ -8,6 +8,7 @@
 #include <arith_uint256.h>
 #include <chain.h>
 #include <hash.h>
+#include <pow/kawheavy/kawheavy.h>
 #include <primitives/block.h>
 #include <uint256.h>
 
@@ -232,6 +233,11 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
         bnNew = bnPowLimit;
 
     return bnNew.GetCompact();
+}
+
+uint256 GetKAWHeavyHash(const CBlockHeader& block, int32_t height)
+{
+    return KAWHeavy::Hash(block.GetHash(), block.nNonce, height);
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_POW_KAWHEAVY_H
-#define BITCOIN_POW_KAWHEAVY_H
+#ifndef BITCOIN_POW_KAWHEAVY_KAWHEAVY_H
+#define BITCOIN_POW_KAWHEAVY_KAWHEAVY_H
 
 #include <stdint.h>
 
@@ -26,4 +26,4 @@ uint256 Hash(const uint256& header_hash, uint32_t nonce, int32_t height, const P
 
 } // namespace KAWHeavy
 
-#endif // BITCOIN_POW_KAWHEAVY_H
+#endif // BITCOIN_POW_KAWHEAVY_KAWHEAVY_H
