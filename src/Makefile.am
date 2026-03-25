@@ -737,6 +737,23 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/chacha20poly1305.h \
   crypto/chacha20poly1305.cpp \
   crypto/common.h \
+  crypto/kawheavy/blake3_wrapper.cpp \
+  crypto/kawheavy/blake3_wrapper.h \
+  crypto/kawheavy/blake3/blake3.c \
+  crypto/kawheavy/blake3/blake3.h \
+  crypto/kawheavy/blake3/blake3_avx2.c \
+  crypto/kawheavy/blake3/blake3_avx512.c \
+  crypto/kawheavy/blake3/blake3_impl.h \
+  crypto/kawheavy/blake3/blake3_neon.c \
+  crypto/kawheavy/blake3/blake3_portable.c \
+  crypto/kawheavy/blake3/blake3_sse2.c \
+  crypto/kawheavy/blake3/blake3_sse41.c \
+  crypto/kawheavy/kawheavy.cpp \
+  crypto/kawheavy/kawheavy.h \
+  crypto/kawheavy/kawpow/kawpow.cpp \
+  crypto/kawheavy/kawpow/kawpow.hpp \
+  crypto/kawheavy/kawpow_wrapper.h \
+  crypto/kawheavy/kheavyhash_wrapper.h \
   crypto/hkdf_sha256_32.cpp \
   crypto/hkdf_sha256_32.h \
   crypto/hmac_sha256.cpp \
@@ -1197,6 +1214,13 @@ CTAES_DIST += crypto/ctaes/ctaes.h
 CTAES_DIST += crypto/ctaes/README.md
 CTAES_DIST += crypto/ctaes/test.c
 
+KAWHEAVY_DIST = crypto/kawheavy/blake3/LICENSE.blake3
+KAWHEAVY_DIST += crypto/kawheavy/kawpow/LICENSE.kawpow
+KAWHEAVY_DIST += crypto/kawheavy/kheavyhash/LICENSE.kheavyhash
+KAWHEAVY_DIST += crypto/kawheavy/kheavyhash/README.md
+KAWHEAVY_DIST += crypto/kawheavy/kheavyhash/kheavyhash.go
+KAWHEAVY_DIST += crypto/kawheavy/kheavyhash/kheavyhash_test.go
+
 CLEANFILES = $(EXTRA_LIBRARIES)
 
 CLEANFILES += *.gcda *.gcno
@@ -1224,6 +1248,7 @@ LIBDASHBLS_DIST = dashbls
 
 EXTRA_DIST = \
   $(CTAES_DIST)   \
+  $(KAWHEAVY_DIST) \
   $(IMMER_DIST)   \
   $(LIBDASHBLS_DIST)
 
