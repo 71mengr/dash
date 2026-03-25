@@ -5,7 +5,6 @@
 #include "kawpow-internal.hpp"
 
 #include <attributes.h>
-#include "bit_manipulation.h"
 #include "endianness.hpp"
 #include "primes.h"
 #include <kawpow/keccak.hpp>
