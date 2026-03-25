@@ -9,6 +9,13 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+#include <array>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 namespace kawheavy {
 
 /**
@@ -61,17 +68,17 @@ private:
 /**
  * Check if KAWHeavy is active
  */
-bool IsActive(const CBlockHeader& header, const Consensus::Params& consensus);
+bool IsActive(int32_t height, const Consensus::Params& consensus);
 
 /**
  * Compute KAWHeavy hash (replaces X11)
  */
-uint256 GetHash(const CBlockHeader& header, const Consensus::Params& consensus);
+uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus);
 
 /**
  * Verify proof of work
  */
-bool CheckProofOfWork(const CBlockHeader& header, const Consensus::Params& consensus);
+bool CheckProofOfWork(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus);
 
 /**
  * Initialize KAWHeavy subsystem

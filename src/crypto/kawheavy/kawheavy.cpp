@@ -7,16 +7,22 @@
 #include <crypto/kawheavy/kawpow_wrapper.h>
 #include <crypto/kawheavy/kheavyhash_wrapper.h>
 
+#include <arith_uint256.h>
 #include <hash.h>
 #include <logging.h>
+#include <pow.h>
 #include <util/strencodings.h>
-#include <validation.h>
+#include <util/system.h>
 
 #include <atomic>
+#include <cstdio>
 #include <chrono>
+#include <cstring>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <shared_mutex>
+#include <stdexcept>
 
 namespace kawheavy {
 
@@ -164,7 +170,7 @@ bool DAG::SaveToDisk() const
 
 std::string DAG::GetFilePath(uint32_t epoch)
 {
-    return strprintf("%s/kawheavy_dag_%u.dat", GetDataDir().string(), epoch);
+    return strprintf("%s/kawheavy_dag_%u.dat", gArgs.GetDataDirNet().string(), epoch);
 }
 
 std::optional<const std::array<uint8_t, 64>*> DAG::GetItem(uint64_t index) const
@@ -198,12 +204,12 @@ std::shared_ptr<const DAG> DAG::LoadOrGenerate(uint32_t epoch, const Params& par
 // Main Hash Function
 //=============================================================================
 
-bool IsActive(const CBlockHeader& header, const Consensus::Params& consensus)
+bool IsActive(int32_t height, const Consensus::Params& consensus)
 {
-    return header.nHeight >= consensus.nKAWHeavyHeight;
+    return height >= consensus.nKAWHeavyHeight;
 }
 
-uint256 GetHash(const CBlockHeader& header, const Consensus::Params& consensus)
+uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus)
 {
     // Serialize header
     std::vector<uint8_t> header_data;
@@ -214,14 +220,14 @@ uint256 GetHash(const CBlockHeader& header, const Consensus::Params& consensus)
     uint256 header_hash = Blake3(header_data);
     
     // Get DAG for this epoch
-    uint32_t epoch = header.nHeight / g_state->params.epoch_length;
+    uint32_t epoch = height / g_state->params.epoch_length;
     auto dag = DAG::LoadOrGenerate(epoch, g_state->params);
     
     // Phase 1: KawPow mixing (memory-hard)
     uint256 kawpow_result = kawpow::Mix(header_hash, header.nNonce, *dag, g_state->params);
     
     // Phase 2: KHeavyHash transformation (compute-hard)
-    uint256 kheavy_result = kheavyhash::Transform(kawpow_result, header.nNonce, header.nHeight, g_state->params);
+    uint256 kheavy_result = kheavyhash::Transform(kawpow_result, header.nNonce, height, g_state->params);
     
     // Phase 3: Final mixing with Blake3
     uint256 result = kheavyhash::Finalize(kawpow_result, kheavy_result, header.nNonce, g_state->params);
@@ -238,16 +244,16 @@ uint256 GetHash(const CBlockHeader& header, const Consensus::Params& consensus)
     return result;
 }
 
-bool CheckProofOfWork(const CBlockHeader& header, const Consensus::Params& consensus)
+bool CheckProofOfWork(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus)
 {
-    if (!IsActive(header, consensus)) {
-        return header.GetHash() <= header.GetPoWHashTarget(consensus);
+    if (!IsActive(height, consensus)) {
+        return ::CheckProofOfWork(header.GetHash(), header.nBits, consensus);
     }
     
-    uint256 hash = GetHash(header, consensus);
-    uint256 target = arith_uint256().SetCompact(header.nBits).GetCheapHash();
+    const uint256 hash = GetHash(header, height, consensus);
+    const arith_uint256 target = arith_uint256().SetCompact(header.nBits);
     
-    return hash <= target;
+    return UintToArith256(hash) <= target;
 }
 
 void Init(const Params& params)
