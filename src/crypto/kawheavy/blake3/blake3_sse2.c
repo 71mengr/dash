@@ -1,5 +1,6 @@
 #include "blake3_impl.h"
 
+#if defined(IS_X86) && !defined(BLAKE3_NO_SSE2)
 #include <immintrin.h>
 
 #define DEGREE 4
@@ -564,3 +565,5 @@ void blake3_hash_many_sse2(const uint8_t *const *inputs, size_t num_inputs,
     out = &out[BLAKE3_OUT_LEN];
   }
 }
+
+#endif  // defined(IS_X86) && !defined(BLAKE3_NO_SSE2)

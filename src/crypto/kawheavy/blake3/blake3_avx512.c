@@ -1,5 +1,6 @@
 #include "blake3_impl.h"
 
+#if defined(IS_X86) && !defined(BLAKE3_NO_AVX512)
 #include <immintrin.h>
 
 #define _mm_shuffle_ps2(a, b, c)                                               \
@@ -1386,3 +1387,5 @@ void blake3_xof_many_avx512(const uint32_t cv[8],
     out += BLAKE3_BLOCK_LEN;
   }
 }
+
+#endif  // defined(IS_X86) && !defined(BLAKE3_NO_AVX512)
