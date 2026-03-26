@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <kawpow/kawpow.h>
+#include "kawpow.h"
 
 #ifdef __cplusplus
 extern "C" {

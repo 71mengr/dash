@@ -771,6 +771,8 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/kawheavy/kawpow/keccak.hpp \
   crypto/kawheavy/kawpow/kiss99.hpp \
   crypto/kawheavy/kawpow/progpow.cpp \
+  crypto/kawheavy/kawpow/primes.c \
+  crypto/kawheavy/kawpow/primes.h \
   crypto/hkdf_sha256_32.cpp \
   crypto/hkdf_sha256_32.h \
   crypto/hmac_sha256.cpp \
