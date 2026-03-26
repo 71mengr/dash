@@ -5,10 +5,11 @@
 #include "kawpow-internal.hpp"
 
 #include <attributes.h>
+#include "bit_manipulation.h"
 #include "endianness.hpp"
 #include "primes.h"
-#include <kawpow/keccak.hpp>
-#include <kawpow/progpow.hpp>
+#include "keccak.hpp"
+#include "progpow.hpp"
 
 #include <cassert>
 #include <cstdlib>
