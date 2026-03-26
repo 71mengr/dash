@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "../support/attributes.h"
+#include <attributes.h>
 #include <stdint.h>
 
 /**

@@ -3,9 +3,9 @@
  * Licensed under the Apache License, Version 2.0.
  */
 
-#include <kawpow/keccak.h>
+#include "keccak.h"
 
-#include "../support/attributes.h"
+#include <attributes.h>
 #include <string.h>
 
 #if _WIN32

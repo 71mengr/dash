@@ -2,14 +2,14 @@
 // Copyright 2018-2019 Pawel Bylica.
 // Licensed under the Apache License, Version 2.0.
 
-#include <kawpow/progpow.hpp>
+#include "progpow.hpp"
 
 #include "bit_manipulation.h"
 #include "endianness.hpp"
 #include "kawpow-internal.hpp"
 #include "kiss99.hpp"
 ///#include "../../test/unittests/helpers.hpp"
-#include <kawpow/keccak.hpp>
+#include "keccak.hpp"
 
 #include <array>
 
