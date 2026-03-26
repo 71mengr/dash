@@ -12,114 +12,44 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
-#include <math.h>
 
-unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const Consensus::Params& params) {
-    const CBlockIndex *BlockLastSolved = pindexLast;
-    const CBlockIndex *BlockReading = pindexLast;
-    uint64_t PastBlocksMass = 0;
-    int64_t PastRateActualSeconds = 0;
-    int64_t PastRateTargetSeconds = 0;
-    double PastRateAdjustmentRatio = double(1);
-    arith_uint256 PastDifficultyAverage;
-    arith_uint256 PastDifficultyAveragePrev;
-    double EventHorizonDeviation;
-    double EventHorizonDeviationFast;
-    double EventHorizonDeviationSlow;
+namespace {
 
-    uint64_t pastSecondsMin = params.nPowTargetTimespan * 0.025;
-    uint64_t pastSecondsMax = params.nPowTargetTimespan * 7;
-    uint64_t PastBlocksMin = pastSecondsMin / params.nPowTargetSpacing;
-    uint64_t PastBlocksMax = pastSecondsMax / params.nPowTargetSpacing;
-
-    if (BlockLastSolved == nullptr || BlockLastSolved->nHeight == 0 || (uint64_t)BlockLastSolved->nHeight < PastBlocksMin) { return UintToArith256(params.powLimit).GetCompact(); }
-
-    for (unsigned int i = 1; BlockReading && BlockReading->nHeight > 0; i++) {
-        if (PastBlocksMax > 0 && i > PastBlocksMax) { break; }
-        PastBlocksMass++;
-
-        PastDifficultyAverage.SetCompact(BlockReading->nBits);
-        if (i > 1) {
-            // handle negative arith_uint256
-            if(PastDifficultyAverage >= PastDifficultyAveragePrev)
-                PastDifficultyAverage = ((PastDifficultyAverage - PastDifficultyAveragePrev) / i) + PastDifficultyAveragePrev;
-            else
-                PastDifficultyAverage = PastDifficultyAveragePrev - ((PastDifficultyAveragePrev - PastDifficultyAverage) / i);
-        }
-        PastDifficultyAveragePrev = PastDifficultyAverage;
-
-        PastRateActualSeconds = BlockLastSolved->GetBlockTime() - BlockReading->GetBlockTime();
-        PastRateTargetSeconds = params.nPowTargetSpacing * PastBlocksMass;
-        PastRateAdjustmentRatio = double(1);
-        if (PastRateActualSeconds < 0) { PastRateActualSeconds = 0; }
-        if (PastRateActualSeconds != 0 && PastRateTargetSeconds != 0) {
-            PastRateAdjustmentRatio = double(PastRateTargetSeconds) / double(PastRateActualSeconds);
-        }
-        EventHorizonDeviation = 1 + (0.7084 * pow((double(PastBlocksMass)/double(28.2)), -1.228));
-        EventHorizonDeviationFast = EventHorizonDeviation;
-        EventHorizonDeviationSlow = 1 / EventHorizonDeviation;
-
-        if (PastBlocksMass >= PastBlocksMin) {
-                if ((PastRateAdjustmentRatio <= EventHorizonDeviationSlow) || (PastRateAdjustmentRatio >= EventHorizonDeviationFast))
-                { assert(BlockReading); break; }
-        }
-        if (BlockReading->pprev == nullptr) { assert(BlockReading); break; }
-        BlockReading = BlockReading->pprev;
-    }
-
-    arith_uint256 bnNew(PastDifficultyAverage);
-    if (PastRateActualSeconds != 0 && PastRateTargetSeconds != 0) {
-        bnNew *= PastRateActualSeconds;
-        bnNew /= PastRateTargetSeconds;
-    }
-
-    if (bnNew > UintToArith256(params.powLimit)) {
-        bnNew = UintToArith256(params.powLimit);
-    }
-
-    return bnNew.GetCompact();
-}
-
-unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const Consensus::Params& params) {
-    /* current difficulty formula, dash - DarkGravity v3, written by Evan Duffield - evan@dash.org */
+unsigned int CalculateAdaptiveWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
+{
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
-    int64_t nPastBlocks = 24;
+    static constexpr int64_t nWindow{60};
 
-    // make sure we have at least (nPastBlocks + 1) blocks, otherwise just return powLimit
-    if (!pindexLast || pindexLast->nHeight < nPastBlocks) {
+    if (!pindexLast || pindexLast->nHeight < nWindow) {
         return bnPowLimit.GetCompact();
     }
 
-    const CBlockIndex *pindex = pindexLast;
-    arith_uint256 bnPastTargetAvg;
+    const CBlockIndex* pindex = pindexLast;
+    arith_uint256 weighted_target_sum;
+    int64_t total_weight{0};
 
-    for (unsigned int nCountBlocks = 1; nCountBlocks <= nPastBlocks; nCountBlocks++) {
-        arith_uint256 bnTarget = arith_uint256().SetCompact(pindex->nBits);
-        if (nCountBlocks == 1) {
-            bnPastTargetAvg = bnTarget;
-        } else {
-            // NOTE: that's not an average really...
-            bnPastTargetAvg = (bnPastTargetAvg * nCountBlocks + bnTarget) / (nCountBlocks + 1);
-        }
+    for (int64_t block = 1; block <= nWindow; ++block) {
+        const arith_uint256 target = arith_uint256().SetCompact(pindex->nBits);
+        const int64_t weight = block;
+        weighted_target_sum += target * weight;
+        total_weight += weight;
 
-        if(nCountBlocks != nPastBlocks) {
-            assert(pindex->pprev); // should never fail
+        if (block != nWindow) {
+            if (pindex->pprev == nullptr) {
+                return bnPowLimit.GetCompact();
+            }
             pindex = pindex->pprev;
         }
     }
 
-    arith_uint256 bnNew(bnPastTargetAvg);
+    arith_uint256 bnNew = weighted_target_sum / total_weight;
 
     int64_t nActualTimespan = pindexLast->GetBlockTime() - pindex->GetBlockTime();
-    // NOTE: is this accurate? nActualTimespan counts it for (nPastBlocks - 1) blocks only...
-    int64_t nTargetTimespan = nPastBlocks * params.nPowTargetSpacing;
+    const int64_t nTargetTimespan = (nWindow - 1) * params.nPowTargetSpacing;
 
-    if (nActualTimespan < nTargetTimespan/3)
-        nActualTimespan = nTargetTimespan/3;
-    if (nActualTimespan > nTargetTimespan*3)
-        nActualTimespan = nTargetTimespan*3;
+    if (nActualTimespan < nTargetTimespan / 2) nActualTimespan = nTargetTimespan / 2;
+    if (nActualTimespan > nTargetTimespan * 2) nActualTimespan = nTargetTimespan * 2;
 
-    // Retarget
     bnNew *= nActualTimespan;
     bnNew /= nTargetTimespan;
 
@@ -129,6 +59,8 @@ unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const Consens
 
     return bnNew.GetCompact();
 }
+
+} // namespace
 
 unsigned int GetNextWorkRequiredBTC(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -177,12 +109,8 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         return bnPowLimit.GetCompact();
     }
 
-    if (pindexLast->nHeight + 1 < params.nPowKGWHeight) {
-        return GetNextWorkRequiredBTC(pindexLast, pblock, params);
-    }
-
-    // Note: GetNextWorkRequiredBTC has it's own special difficulty rule,
-    // so we only apply this to post-BTC algos.
+    // Note: GetNextWorkRequiredBTC has its own special difficulty rule,
+    // so we only apply this to the adaptive algorithm used on live chains.
     if (params.fPowNoRetargeting) {
         return bnPowLimit.GetCompact();
     }
@@ -202,11 +130,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         }
     }
 
-    if (pindexLast->nHeight + 1 < params.nPowDGWHeight) {
-        return KimotoGravityWell(pindexLast, params);
-    }
-
-    return DarkGravityWave(pindexLast, params);
+    return CalculateAdaptiveWorkRequired(pindexLast, params);
 }
 
 // for DIFF_BTC only!

@@ -159,7 +159,7 @@ class CMainParams : public CChainParams {
 public:
     CMainParams() {
         strNetworkID = CBaseChainParams::MAIN;
-        consensus.nSubsidyHalvingInterval = 210240; // Note: actual number of blocks per calendar year with DGW v3 is ~200700 (for example 449750 - 249050)
+        consensus.nSubsidyHalvingInterval = 210240;
         consensus.nMasternodePaymentsStartBlock = 100000; // not true, but it's ok as long as it's less then nMasternodePaymentsIncreaseBlock
         consensus.nMasternodePaymentsIncreaseBlock = 158000; // actual historical value
         consensus.nMasternodePaymentsIncreasePeriod = 576*30; // 17280 - actual historical value
@@ -204,8 +204,6 @@ public:
         consensus.nPowTargetSpacing = 2.5 * 60; // Dash: 2.5 minutes
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nPowKGWHeight = 15200;
-        consensus.nPowDGWHeight = 34140;
         consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -405,8 +403,6 @@ public:
         consensus.nPowTargetSpacing = 2.5 * 60; // Dash: 2.5 minutes
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nPowKGWHeight = 4002; // nPowKGWHeight >= nPowDGWHeight means "no KGW"
-        consensus.nPowDGWHeight = 4002; // TODO: make sure to drop all spork6 related code on next testnet reset
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -581,8 +577,6 @@ public:
         consensus.nPowTargetSpacing = 2.5 * 60; // Dash: 2.5 minutes
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nPowKGWHeight = 4001; // nPowKGWHeight >= nPowDGWHeight means "no KGW"
-        consensus.nPowDGWHeight = 4001;
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -818,8 +812,6 @@ public:
         consensus.nPowTargetSpacing = 2.5 * 60; // Dash: 2.5 minutes
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
-        consensus.nPowKGWHeight = 15200; // same as mainnet
-        consensus.nPowDGWHeight = 34140; // same as mainnet
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
         consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 2016)
 

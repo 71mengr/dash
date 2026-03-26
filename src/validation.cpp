@@ -4161,17 +4161,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     const bool pos_active = IsProofOfStakeEnabled(chainman.GetConsensus(), nHeight);
 
     // Check proof of work
-    if (!pos_active && chainman.GetParams().NetworkIDString() == CBaseChainParams::MAIN && nHeight <= 68589){
-        // architecture issues with DGW v1 and v2)
-        unsigned int nBitsNext = GetNextWorkRequired(pindexPrev, &block, chainman.GetConsensus());
-        double n1 = ConvertBitsToDouble(block.nBits);
-        double n2 = ConvertBitsToDouble(nBitsNext);
-
-        if (abs(n1-n2) > n1*0.5) {
-            LogPrintf("ERROR: %s : incorrect proof of work (DGW pre-fork) - %f %f %f at %d\n", __func__, abs(n1-n2), n1, n2, nHeight);
-            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits");
-        }
-    } else if (!pos_active) {
+    if (!pos_active) {
         if (block.nBits != GetNextWorkRequired(pindexPrev, &block, chainman.GetConsensus())) {
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", strprintf("incorrect proof of work at %d", nHeight));
         }
