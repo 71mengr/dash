@@ -551,9 +551,9 @@ public:
             hash.SetNull();
         }
         if (hash.IsNull()) {
-            CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
-            ss.write(MakeByteSpan(vecBytes));
-            hash = ss.GetHash();
+            HashWriter hasher;
+            hasher.write(MakeByteSpan(vecBytes));
+            hash = hasher.GetHash();
         }
         return hash;
     }
