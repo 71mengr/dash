@@ -10,6 +10,7 @@
 #include <uint256.h>
 
 #include <algorithm>
+#include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 
