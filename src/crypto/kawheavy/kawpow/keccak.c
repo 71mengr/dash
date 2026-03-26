@@ -27,7 +27,7 @@
 
 
 /** Loads 64-bit integer from given memory location as little-endian number. */
-static INLINE ALWAYS_INLINE uint64_t load_le(const uint8_t* data)
+static ALWAYS_INLINE uint64_t load_le(const uint8_t* data)
 {
     /* memcpy is the best way of expressing the intention. Every compiler will
        optimize is to single load instruction if the target architecture
@@ -39,7 +39,7 @@ static INLINE ALWAYS_INLINE uint64_t load_le(const uint8_t* data)
     return to_le64(word);
 }
 
-static INLINE ALWAYS_INLINE void keccak(
+static ALWAYS_INLINE void keccak(
     uint64_t* out, size_t bits, const uint8_t* data, size_t size)
 {
     static const size_t word_size = sizeof(uint64_t);
@@ -121,5 +121,4 @@ union kawpow_hash512 kawpow_keccak512_64(const uint8_t data[64])
     keccak(hash.word64s, 512, data, 64);
     return hash;
 }
-
 
