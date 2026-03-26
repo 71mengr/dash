@@ -21,7 +21,7 @@ inline void Pow_KAWHeavy(benchmark::Bench& bench, const size_t bytes)
     constexpr int32_t height{0};
 
     bench.minEpochIterations(20).batch(in.size()).unit("byte").run([&] {
-        const uint256 header_hash = Hash(in.begin(), in.end());
+        const uint256 header_hash = Hash(in);
         hash = KAWHeavy::Hash(header_hash, nonce++, height);
     });
 }
