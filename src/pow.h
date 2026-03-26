@@ -20,7 +20,7 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 
 
 
-uint256 GetKAWHeavyHash(const CBlockHeader& block, int32_t height);
+uint256 GetKAWHeavyHash(const CBlockHeader& block, int32_t height, const Consensus::Params& params);
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);

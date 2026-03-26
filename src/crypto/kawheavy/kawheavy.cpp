@@ -41,6 +41,13 @@ namespace {
     std::unique_ptr<GlobalState> g_state;
     std::once_flag g_init_flag;
     std::shared_mutex g_dag_mutex;
+
+    void EnsureInitialized()
+    {
+        if (g_state == nullptr || !g_state->initialized.load()) {
+            Init(Params::Mainnet());
+        }
+    }
 }
 
 //=============================================================================
@@ -213,6 +220,8 @@ bool IsActive(int32_t height, const Consensus::Params& consensus)
 
 uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus)
 {
+    EnsureInitialized();
+
     // Serialize header
     std::vector<uint8_t> header_data;
     CVectorWriter ss(SER_NETWORK, PROTOCOL_VERSION, header_data, 0);
@@ -248,6 +257,8 @@ uint256 GetHash(const CBlockHeader& header, int32_t height, const Consensus::Par
 
 bool CheckProofOfWork(const CBlockHeader& header, int32_t height, const Consensus::Params& consensus)
 {
+    EnsureInitialized();
+
     if (!IsActive(height, consensus)) {
         return ::CheckProofOfWork(header.GetHash(), header.nBits, consensus);
     }

@@ -4175,6 +4175,9 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
         if (block.nBits != GetNextWorkRequired(pindexPrev, &block, chainman.GetConsensus())) {
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", strprintf("incorrect proof of work at %d", nHeight));
         }
+        if (!CheckProofOfWork(GetKAWHeavyHash(block, nHeight, chainman.GetConsensus()), block.nBits, chainman.GetConsensus())) {
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+        }
     } else if (block.nNonce != 0) {
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-pos-nonce", "proof of stake blocks must use a null nonce");
     } else if ((block.nTime & chainman.GetConsensus().nStakeTimestampMask) != 0) {

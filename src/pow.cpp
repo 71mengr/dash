@@ -7,8 +7,8 @@
 
 #include <arith_uint256.h>
 #include <chain.h>
+#include <crypto/kawheavy/kawheavy.h>
 #include <hash.h>
-#include <pow/kawheavy/kawheavy.h>
 #include <primitives/block.h>
 #include <uint256.h>
 
@@ -235,9 +235,9 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
     return bnNew.GetCompact();
 }
 
-uint256 GetKAWHeavyHash(const CBlockHeader& block, int32_t height)
+uint256 GetKAWHeavyHash(const CBlockHeader& block, int32_t height, const Consensus::Params& params)
 {
-    return KAWHeavy::Hash(block.GetHash(), block.nNonce, height);
+    return kawheavy::GetHash(block, height, params);
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params& params)
