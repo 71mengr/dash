@@ -6,6 +6,7 @@
 #include <crypto/kawheavy/blake3_wrapper.h>
 #include <crypto/kawheavy/kawpow_wrapper.h>
 #include <crypto/kawheavy/kheavyhash_wrapper.h>
+#include <crypto/common.h>
 
 #include <arith_uint256.h>
 #include <hash.h>
@@ -268,6 +269,73 @@ bool CheckProofOfWork(const CBlockHeader& header, int32_t height, const Consensu
     
     return UintToArith256(hash) <= target;
 }
+
+namespace kawpow {
+uint256 Mix(
+    const uint256& header_hash,
+    uint32_t nonce,
+    const DAG& dag,
+    const Params& params)
+{
+    const auto item_count = std::max<uint64_t>(1, dag.GetItemCount());
+    uint64_t index = ReadLE64(header_hash.begin()) ^ static_cast<uint64_t>(nonce);
+    std::array<uint8_t, 36> seed_buf{};
+    memcpy(seed_buf.data(), header_hash.begin(), 32);
+    WriteLE32(seed_buf.data() + 32, nonce);
+    uint256 state = Blake3(Span<const uint8_t>(seed_buf.data(), seed_buf.size()));
+
+    for (uint32_t round = 0; round < params.progpow_rounds; ++round) {
+        index = (index + round * 0x9e3779b185ebca87ULL) % item_count;
+        const auto item = dag.GetItem(index);
+        if (!item.has_value()) continue;
+        const auto* dag_item = *item;
+
+        std::array<uint8_t, 64> mixed{};
+        memcpy(mixed.data(), state.begin(), 32);
+        for (size_t i = 0; i < mixed.size(); ++i) {
+            mixed[i] ^= (*dag_item)[(i + round) % mixed.size()];
+        }
+        state = Blake3(Span<const uint8_t>(mixed.data(), mixed.size()));
+    }
+
+    return state;
+}
+} // namespace kawpow
+
+namespace kheavyhash {
+uint256 Transform(
+    const uint256& input,
+    uint32_t nonce,
+    uint32_t height,
+    const Params& params)
+{
+    uint256 state = input;
+    for (uint32_t round = 0; round < params.kheavy_rounds; ++round) {
+        std::array<uint8_t, 40> buf{};
+        memcpy(buf.data(), state.begin(), 32);
+        WriteLE32(buf.data() + 32, nonce);
+        WriteLE32(buf.data() + 36, height ^ round);
+        state = Blake3(Span<const uint8_t>(buf.data(), buf.size()));
+    }
+    return state;
+}
+
+uint256 Finalize(
+    const uint256& kawpow_result,
+    const uint256& kheavy_result,
+    uint32_t nonce,
+    const Params& params)
+{
+    uint256 state = Blake3(kawpow_result, kheavy_result);
+    for (uint32_t round = 0; round < params.final_rounds; ++round) {
+        std::array<uint8_t, 36> buf{};
+        memcpy(buf.data(), state.begin(), 32);
+        WriteLE32(buf.data() + 32, nonce + round);
+        state = Blake3(Span<const uint8_t>(buf.data(), buf.size()));
+    }
+    return state;
+}
+} // namespace kheavyhash
 
 void Init(const Params& params)
 {
