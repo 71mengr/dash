@@ -10,6 +10,16 @@
 
 #include <stdint.h>
 
+#ifndef NO_SANITIZE
+#if defined(__clang__)
+#define NO_SANITIZE(what) __attribute__((no_sanitize(what)))
+#elif defined(__GNUC__)
+#define NO_SANITIZE(what) __attribute__((no_sanitize_undefined))
+#else
+#define NO_SANITIZE(what)
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
