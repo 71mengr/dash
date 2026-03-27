@@ -233,13 +233,14 @@ public:
          * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
          * a large 32-bit integer with any alignment.
          */
-        pchMessageStart[0] = 0xbf;
-        pchMessageStart[1] = 0x0c;
-        pchMessageStart[2] = 0x6b;
-        pchMessageStart[3] = 0xbd;
-        nDefaultPort = 11118;
-        nDefaultPlatformP2PPort = 26656;
-        nDefaultPlatformHTTPPort = 443;
+        // Fork-specific network identifiers (must be unique to avoid cross-network peering).
+        pchMessageStart[0] = 0xc3;
+        pchMessageStart[1] = 0x1a;
+        pchMessageStart[2] = 0xf2;
+        pchMessageStart[3] = 0x7e;
+        nDefaultPort = 19118;
+        nDefaultPlatformP2PPort = 29656;
+        nDefaultPlatformHTTPPort = 444;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 57;
         m_assumed_chain_state_size = 1;
@@ -254,23 +255,26 @@ public:
         // This is fine at runtime as we'll fall back to using them as an addrfetch if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        vSeeds.emplace_back("dnsseed.dash.org.");
+        // Replace with your fork's DNS seeds.
+        vSeeds.emplace_back("seed1.yourfork.org.");
 
-        // Dash addresses start with 'X'
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,76);
-        // Dash script addresses start with '7'
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,16);
-        // Dash private keys start with '7' or 'X'
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,204);
-        // Dash BIP32 pubkeys start with 'xpub' (Bitcoin defaults)
+        // Fork address prefixes.
+        // P2PKH addresses start with 'P'
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,55);
+        // P2SH addresses start with 'p'
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,117);
+        // Private keys start with '7' or '8'
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,183);
+        // BIP32 pubkeys start with 'xpub' (Bitcoin defaults)
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
-        // Dash BIP32 prvkeys start with 'xprv' (Bitcoin defaults)
+        // BIP32 prvkeys start with 'xprv' (Bitcoin defaults)
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
-        // Dash BIP44 coin type is '5'
-        nExtCoinType = 5;
+        // Fork BIP44 coin type (replace with your registered SLIP-44 value).
+        nExtCoinType = 1;
 
-        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
+        // Do not reuse Dash fixed seeds for a fork.
+        vFixedSeeds.clear();
 
         // long living quorum params
         AddLLMQ(Consensus::LLMQType::LLMQ_50_60);
