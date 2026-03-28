@@ -3,6 +3,11 @@
 #if defined(IS_X86) && !defined(BLAKE3_NO_AVX2)
 #include <immintrin.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC push_options
+#pragma GCC target("avx2")
+#endif
+
 #define DEGREE 8
 
 INLINE __m256i loadu(const uint8_t src[32]) {
@@ -325,5 +330,9 @@ void blake3_hash_many_avx2(const uint8_t *const *inputs, size_t num_inputs,
                             out);
 #endif
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 #endif  // defined(IS_X86) && !defined(BLAKE3_NO_AVX2)
