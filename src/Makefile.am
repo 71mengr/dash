@@ -744,7 +744,6 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/kawheavy/blake3/blake3_avx2.c \
   crypto/kawheavy/blake3/blake3_avx512.c \
   crypto/kawheavy/blake3/blake3_impl.h \
-  crypto/kawheavy/blake3/blake3_neon.c \
   crypto/kawheavy/blake3/blake3_portable.c \
   crypto/kawheavy/blake3/blake3_sse2.c \
   crypto/kawheavy/blake3/blake3_sse41.c \
@@ -797,6 +796,11 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/sha512.h \
   crypto/siphash.cpp \
   crypto/siphash.h
+
+if ENABLE_ARM_NEON
+crypto_libbitcoin_crypto_base_la_SOURCES += \
+  crypto/kawheavy/blake3/blake3_neon.c
+endif
 
 # See explanation for -static in crypto_libbitcoin_crypto_base_la's LDFLAGS and
 # CXXFLAGS above
