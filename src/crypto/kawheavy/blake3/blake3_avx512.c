@@ -3,6 +3,11 @@
 #if defined(IS_X86) && !defined(BLAKE3_NO_AVX512)
 #include <immintrin.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC push_options
+#pragma GCC target("avx512f,avx512vl,avx2")
+#endif
+
 #define _mm_shuffle_ps2(a, b, c)                                               \
   (_mm_castps_si128(                                                           \
       _mm_shuffle_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b), (c))))
@@ -1387,5 +1392,9 @@ void blake3_xof_many_avx512(const uint32_t cv[8],
     out += BLAKE3_BLOCK_LEN;
   }
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 #endif  // defined(IS_X86) && !defined(BLAKE3_NO_AVX512)
