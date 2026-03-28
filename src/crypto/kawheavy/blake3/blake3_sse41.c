@@ -3,6 +3,11 @@
 #if defined(IS_X86) && !defined(BLAKE3_NO_SSE41)
 #include <immintrin.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC push_options
+#pragma GCC target("sse4.1,ssse3")
+#endif
+
 #define DEGREE 4
 
 #define _mm_shuffle_ps2(a, b, c)                                               \
@@ -559,5 +564,9 @@ void blake3_hash_many_sse41(const uint8_t *const *inputs, size_t num_inputs,
     out = &out[BLAKE3_OUT_LEN];
   }
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 #endif  // defined(IS_X86) && !defined(BLAKE3_NO_SSE41)
