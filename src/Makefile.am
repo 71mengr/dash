@@ -1217,7 +1217,41 @@ dash_util_LDADD += $(BOOST_LIBS)
 # dashconsensus library #
 if BUILD_BITCOIN_LIBS
 include_HEADERS = script/bitcoinconsensus.h
-libdashconsensus_la_SOURCES = support/cleanse.cpp $(crypto_libbitcoin_crypto_base_la_SOURCES) $(crypto_libbitcoin_crypto_sph_la_SOURCES) $(libbitcoin_consensus_a_SOURCES)
+libdashconsensus_base_sources = support/cleanse.cpp $(crypto_libbitcoin_crypto_base_la_SOURCES) $(crypto_libbitcoin_crypto_sph_la_SOURCES) $(libbitcoin_consensus_a_SOURCES)
+libdashconsensus_excluded_crypto_sources = \
+  crypto/kawheavy/blake3_wrapper.cpp \
+  crypto/kawheavy/blake3_wrapper.h \
+  crypto/kawheavy/blake3/blake3.c \
+  crypto/kawheavy/blake3/blake3.h \
+  crypto/kawheavy/blake3/blake3_avx2.c \
+  crypto/kawheavy/blake3/blake3_avx512.c \
+  crypto/kawheavy/blake3/blake3_impl.h \
+  crypto/kawheavy/blake3/blake3_portable.c \
+  crypto/kawheavy/blake3/blake3_sse2.c \
+  crypto/kawheavy/blake3/blake3_sse41.c \
+  crypto/kawheavy/blake3/blake3_neon.c \
+  crypto/kawheavy/kawheavy.cpp \
+  crypto/kawheavy/kawheavy.h \
+  crypto/kawheavy/kawpow/kawpow.cpp \
+  crypto/kawheavy/kawpow/kawpow.hpp \
+  crypto/kawheavy/kawpow_wrapper.h \
+  crypto/kawheavy/kawpow-internal.hpp \
+  crypto/kawheavy/kheavyhash_wrapper.h \
+  crypto/kawheavy/kawpow/hash_types.h \
+  crypto/kawheavy/kawpow/hash_types.hpp \
+  crypto/kawheavy/kawpow/endianness.hpp \
+  crypto/kawheavy/kawpow/kawpow-internal.hpp \
+  crypto/kawheavy/kawpow/kawpow.h \
+  crypto/kawheavy/kawpow/bit_manipulation.h \
+  crypto/kawheavy/kawpow/builtins.h \
+  crypto/kawheavy/kawpow/kiss99.hpp \
+  crypto/kawheavy/kawpow/progpow.cpp \
+  crypto/kawheavy/kawpow/keccak.c \
+  crypto/kawheavy/kawpow/keccak.h \
+  crypto/kawheavy/kawpow/keccak.hpp \
+  crypto/kawheavy/kawpow/primes.c \
+  crypto/kawheavy/kawpow/primes.h
+libdashconsensus_la_SOURCES = $(filter-out $(libdashconsensus_excluded_crypto_sources),$(libdashconsensus_base_sources))
 
 libdashconsensus_la_LDFLAGS = $(AM_LDFLAGS) -no-undefined $(RELDFLAGS)
 libdashconsensus_la_LIBADD = $(LIBDASHBLS) $(LIBSECP256K1) $(GMP_LIBS)
