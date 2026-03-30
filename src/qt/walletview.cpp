@@ -220,6 +220,24 @@ void WalletView::gotoOverviewPage()
     setCurrentWidget(overviewPage);
 }
 
+void WalletView::gotoCredentialsPage()
+{
+    setCurrentWidget(overviewPage);
+    overviewPage->showCredentialsTab();
+}
+
+void WalletView::gotoChatPage()
+{
+    setCurrentWidget(overviewPage);
+    overviewPage->showChatTab();
+}
+
+void WalletView::gotoVerifyProofPage()
+{
+    setCurrentWidget(overviewPage);
+    overviewPage->showProofTab();
+}
+
 void WalletView::gotoHistoryPage()
 {
     setCurrentWidget(transactionsPage);

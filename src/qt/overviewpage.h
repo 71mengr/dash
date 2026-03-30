@@ -38,6 +38,9 @@ public:
     void setClientModel(ClientModel *clientModel);
     void setWalletModel(WalletModel *walletModel);
     void showOutOfSyncWarning(bool fShow);
+    void showCredentialsTab();
+    void showChatTab();
+    void showProofTab();
 
 public Q_SLOTS:
     void coinJoinStatus(bool fForce = false);

@@ -259,6 +259,22 @@ void OverviewPage::setPrivacy(bool privacy)
     QApplication::sendEvent(this, &event);
 }
 
+void OverviewPage::showCredentialsTab()
+{
+    ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+}
+
+void OverviewPage::showChatTab()
+{
+    ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
+}
+
+void OverviewPage::showProofTab()
+{
+    ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+    ui->textOwnershipProofInput->setFocus();
+}
+
 OverviewPage::~OverviewPage()
 {
     delete ui;

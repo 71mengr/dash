@@ -768,6 +768,21 @@ void BitcoinGUI::createToolBars()
         historyButton->setStatusTip(tr("Browse transaction history"));
         tabGroup->addButton(historyButton);
 
+        credentialsButton = new QToolButton(this);
+        credentialsButton->setText(tr("&Credentials"));
+        credentialsButton->setStatusTip(tr("View wallet credentials"));
+        tabGroup->addButton(credentialsButton);
+
+        chatButton = new QToolButton(this);
+        chatButton->setText(tr("&Chat"));
+        chatButton->setStatusTip(tr("Open wallet chat tools"));
+        tabGroup->addButton(chatButton);
+
+        verifyProofButton = new QToolButton(this);
+        verifyProofButton->setText(tr("Verify &Proof"));
+        verifyProofButton->setStatusTip(tr("Verify ownership proofs and reuse generated proofs"));
+        tabGroup->addButton(verifyProofButton);
+
         coinJoinCoinsButton = new QToolButton(this);
         coinJoinCoinsButton->setText(coinJoinCoinsAction->text());
         coinJoinCoinsButton->setStatusTip(coinJoinCoinsAction->statusTip());
@@ -788,6 +803,9 @@ void BitcoinGUI::createToolBars()
         connect(coinJoinCoinsButton, &QToolButton::clicked, [this]{ gotoCoinJoinCoinsPage(); });
         connect(receiveCoinsButton, &QToolButton::clicked, this, &BitcoinGUI::gotoReceiveCoinsPage);
         connect(historyButton, &QToolButton::clicked, this, &BitcoinGUI::gotoHistoryPage);
+        connect(credentialsButton, &QToolButton::clicked, this, &BitcoinGUI::gotoCredentialsPage);
+        connect(chatButton, &QToolButton::clicked, this, &BitcoinGUI::gotoChatPage);
+        connect(verifyProofButton, &QToolButton::clicked, this, &BitcoinGUI::gotoVerifyProofPage);
         connect(governanceButton, &QToolButton::clicked, this, &BitcoinGUI::gotoGovernancePage);
         connect(masternodeButton, &QToolButton::clicked, this, &BitcoinGUI::gotoMasternodePage);
 
@@ -1088,6 +1106,9 @@ void BitcoinGUI::setWalletActionsEnabled(bool enabled)
         coinJoinCoinsButton->setEnabled(enabled && clientModel->coinJoinOptions().isEnabled());
         receiveCoinsButton->setEnabled(enabled);
         historyButton->setEnabled(enabled);
+        credentialsButton->setEnabled(enabled);
+        chatButton->setEnabled(enabled);
+        verifyProofButton->setEnabled(enabled);
     }
 #endif // ENABLE_WALLET
 
@@ -1327,6 +1348,24 @@ void BitcoinGUI::gotoHistoryPage()
 {
     historyButton->setChecked(true);
     if (walletFrame) walletFrame->gotoHistoryPage();
+}
+
+void BitcoinGUI::gotoCredentialsPage()
+{
+    credentialsButton->setChecked(true);
+    if (walletFrame) walletFrame->gotoCredentialsPage();
+}
+
+void BitcoinGUI::gotoChatPage()
+{
+    chatButton->setChecked(true);
+    if (walletFrame) walletFrame->gotoChatPage();
+}
+
+void BitcoinGUI::gotoVerifyProofPage()
+{
+    verifyProofButton->setChecked(true);
+    if (walletFrame) walletFrame->gotoVerifyProofPage();
 }
 
 void BitcoinGUI::gotoMasternodePage()

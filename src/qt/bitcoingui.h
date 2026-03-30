@@ -143,6 +143,9 @@ private:
     QToolButton* coinJoinCoinsButton = nullptr;
     QToolButton* receiveCoinsButton = nullptr;
     QToolButton* historyButton = nullptr;
+    QToolButton* credentialsButton = nullptr;
+    QToolButton* chatButton = nullptr;
+    QToolButton* verifyProofButton = nullptr;
     QToolButton* masternodeButton = nullptr;
     QToolButton* governanceButton = nullptr;
     QAction* appToolBarLogoAction = nullptr;
@@ -352,6 +355,12 @@ public Q_SLOTS:
     void gotoGovernancePage();
     /** Switch to overview (home) page */
     void gotoOverviewPage();
+    /** Switch to credentials page */
+    void gotoCredentialsPage();
+    /** Switch to chat page */
+    void gotoChatPage();
+    /** Switch to ownership proof page */
+    void gotoVerifyProofPage();
     /** Switch to history (transactions) page */
     void gotoHistoryPage();
     /** Switch to masternode page */

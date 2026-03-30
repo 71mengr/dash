@@ -81,6 +81,12 @@ public Q_SLOTS:
     void gotoGovernancePage();
     /** Switch to overview (home) page */
     void gotoOverviewPage();
+    /** Switch to credentials tools page */
+    void gotoCredentialsPage();
+    /** Switch to chat tools page */
+    void gotoChatPage();
+    /** Switch to proof verification tools page */
+    void gotoVerifyProofPage();
     /** Switch to history (transactions) page */
     void gotoHistoryPage();
     /** Switch to masternode page */
