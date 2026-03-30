@@ -438,7 +438,11 @@ void OverviewPage::updateVerificationSection()
     ui->labelCredentialStatusValue->setText(formatVerificationStatus(verification));
     ui->labelCredentialProviderValue->setText(verification.issuer.empty() ? tr("Not available") : QString::fromStdString(verification.issuer));
     ui->labelCredentialTypeValue->setText(verification.credential_type.empty() ? tr("Not available") : QString::fromStdString(verification.credential_type));
-    ui->labelCredentialAddressesValue->setText(verification.can_generate_addresses ? tr("Allowed") : tr("Blocked"));
+    QString address_generation_status = tr("Blocked until verification");
+    if (verification.can_generate_addresses) {
+        address_generation_status = verification.is_verified ? tr("Created with verification") : tr("Allowed");
+    }
+    ui->labelCredentialAddressesValue->setText(address_generation_status);
 
     const QString hash = verification.credential_hash.empty() ? tr("Not available") : QString::fromStdString(verification.credential_hash);
     ui->labelCredentialHashValue->setText(hash);

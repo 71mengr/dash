@@ -455,155 +455,172 @@
         </widget>
        </item>
        <item>
-       <widget class="QFrame" name="frameCredential">
-         <property name="frameShape">
-          <enum>QFrame::StyledPanel</enum>
+        <widget class="QTabWidget" name="walletToolsTabs">
+         <property name="currentIndex">
+          <number>0</number>
          </property>
-         <property name="frameShadow">
-          <enum>QFrame::Raised</enum>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayoutCredential">
-          <item>
-           <widget class="QLabel" name="labelCredentialHeader">
-            <property name="text">
-             <string>Credentials</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <layout class="QFormLayout" name="formLayoutCredential">
-            <property name="fieldGrowthPolicy">
-             <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-            </property>
-            <property name="horizontalSpacing">
-             <number>11</number>
-            </property>
-            <property name="verticalSpacing">
-             <number>12</number>
-            </property>
-            <item row="0" column="0">
-             <widget class="QLabel" name="labelCredentialStatusText">
-              <property name="text">
-               <string>Status:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QLabel" name="labelCredentialStatusValue">
-              <property name="text">
-               <string>Not verified</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="labelCredentialProviderText">
-              <property name="text">
-               <string>Issuer:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLabel" name="labelCredentialProviderValue">
-              <property name="text">
-               <string>Not available</string>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="labelCredentialTypeText">
-              <property name="text">
-               <string>Credential type:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QLabel" name="labelCredentialTypeValue">
-              <property name="text">
-               <string>Not available</string>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="labelCredentialExpiresText">
-              <property name="text">
-               <string>Expires:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QLabel" name="labelCredentialExpiresValue">
-              <property name="text">
-               <string>Not available</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="0">
-             <widget class="QLabel" name="labelCredentialAddressesText">
-              <property name="text">
-               <string>Address generation:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QLabel" name="labelCredentialAddressesValue">
-              <property name="text">
-               <string>Blocked</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="0">
-             <widget class="QLabel" name="labelCredentialHashText">
-              <property name="text">
-               <string>Credential hash:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="1">
-             <widget class="QLabel" name="labelCredentialHashValue">
-              <property name="text">
-               <string>Not available</string>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="0">
-             <widget class="QLabel" name="labelCredentialDetailsText">
-              <property name="text">
-               <string>Details:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="6" column="1">
-             <widget class="QLabel" name="labelCredentialDetailsValue">
-              <property name="text">
-               <string>Wallet verification has not completed yet.</string>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-              <property name="textInteractionFlags">
-               <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QFrame" name="frameChat">
+         <widget class="QWidget" name="tabCredential">
+          <attribute name="title">
+           <string>Credentials</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutCredentialTab">
+           <item>
+            <widget class="QFrame" name="frameCredential">
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Raised</enum>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayoutCredential">
+              <item>
+               <widget class="QLabel" name="labelCredentialHeader">
+                <property name="text">
+                 <string>Credentials</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QFormLayout" name="formLayoutCredential">
+                <property name="fieldGrowthPolicy">
+                 <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+                </property>
+                <property name="horizontalSpacing">
+                 <number>11</number>
+                </property>
+                <property name="verticalSpacing">
+                 <number>12</number>
+                </property>
+                <item row="0" column="0">
+                 <widget class="QLabel" name="labelCredentialStatusText">
+                  <property name="text">
+                   <string>Status:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QLabel" name="labelCredentialStatusValue">
+                  <property name="text">
+                   <string>Not verified</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="labelCredentialProviderText">
+                  <property name="text">
+                   <string>Issuer:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QLabel" name="labelCredentialProviderValue">
+                  <property name="text">
+                   <string>Not available</string>
+                  </property>
+                  <property name="textInteractionFlags">
+                   <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="labelCredentialTypeText">
+                  <property name="text">
+                   <string>Credential type:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QLabel" name="labelCredentialTypeValue">
+                  <property name="text">
+                   <string>Not available</string>
+                  </property>
+                  <property name="textInteractionFlags">
+                   <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="labelCredentialExpiresText">
+                  <property name="text">
+                   <string>Expires:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QLabel" name="labelCredentialExpiresValue">
+                  <property name="text">
+                   <string>Not available</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="labelCredentialAddressesText">
+                  <property name="text">
+                   <string>Address generation:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="1">
+                 <widget class="QLabel" name="labelCredentialAddressesValue">
+                  <property name="text">
+                   <string>Blocked</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="labelCredentialHashText">
+                  <property name="text">
+                   <string>Credential hash:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="1">
+                 <widget class="QLabel" name="labelCredentialHashValue">
+                  <property name="text">
+                   <string>Not available</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
+                  <property name="textInteractionFlags">
+                   <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QLabel" name="labelCredentialDetailsText">
+                  <property name="text">
+                   <string>Details:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QLabel" name="labelCredentialDetailsValue">
+                  <property name="text">
+                   <string>Wallet verification has not completed yet.</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
+                  <property name="textInteractionFlags">
+                   <set>Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabChat">
+          <attribute name="title">
+           <string>Chat</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutChatTab">
+           <item>
+            <widget class="QFrame" name="frameChat">
          <property name="frameShape">
           <enum>QFrame::StyledPanel</enum>
          </property>
@@ -840,6 +857,10 @@
            </layout>
           </item>
          </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
         </widget>
        </item>
        <item>
