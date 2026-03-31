@@ -272,7 +272,7 @@ void OverviewPage::showChatTab()
 void OverviewPage::showProofTab()
 {
     ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
-    ui->textOwnershipProofInput->setFocus();
+    ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
 }
 
 OverviewPage::~OverviewPage()

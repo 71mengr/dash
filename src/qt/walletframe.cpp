@@ -192,23 +192,56 @@ void WalletFrame::gotoOverviewPage()
 
 void WalletFrame::gotoCredentialsPage()
 {
+    if (mapWalletViews.empty()) {
+        walletStack->setCurrentWidget(no_wallet_group);
+        return;
+    }
+
+    if (WalletView* current_wallet_view = currentWalletView()) {
+        current_wallet_view->gotoCredentialsPage();
+        return;
+    }
+
     QMap<WalletModel*, WalletView*>::const_iterator i;
-    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i) {
         i.value()->gotoCredentialsPage();
+    }
 }
 
 void WalletFrame::gotoChatPage()
 {
+    if (mapWalletViews.empty()) {
+        walletStack->setCurrentWidget(no_wallet_group);
+        return;
+    }
+
+    if (WalletView* current_wallet_view = currentWalletView()) {
+        current_wallet_view->gotoChatPage();
+        return;
+    }
+
     QMap<WalletModel*, WalletView*>::const_iterator i;
-    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i) {
         i.value()->gotoChatPage();
+    }
 }
 
 void WalletFrame::gotoVerifyProofPage()
 {
+    if (mapWalletViews.empty()) {
+        walletStack->setCurrentWidget(no_wallet_group);
+        return;
+    }
+
+    if (WalletView* current_wallet_view = currentWalletView()) {
+        current_wallet_view->gotoVerifyProofPage();
+        return;
+    }
+
     QMap<WalletModel*, WalletView*>::const_iterator i;
-    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i) {
         i.value()->gotoVerifyProofPage();
+    }
 }
 
 void WalletFrame::gotoHistoryPage()
