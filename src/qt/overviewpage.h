@@ -32,7 +32,14 @@ class OverviewPage : public QWidget
     Q_OBJECT
 
 public:
-    explicit OverviewPage(QWidget* parent = nullptr);
+    enum class PageMode {
+        OVERVIEW,
+        CREDENTIALS,
+        CHAT,
+        VERIFY_PROOF
+    };
+
+    explicit OverviewPage(QWidget* parent = nullptr, PageMode mode = PageMode::OVERVIEW);
     ~OverviewPage();
 
     void setClientModel(ClientModel *clientModel);
@@ -62,6 +69,7 @@ private:
     WalletModel* walletModel{nullptr};
     interfaces::WalletBalances m_balances;
     bool m_privacy{false};
+    const PageMode m_page_mode;
     BitcoinUnit m_display_bitcoin_unit;
     bool fShowAdvancedCJUI;
     int cachedNumISLocks{-1};

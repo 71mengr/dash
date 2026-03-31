@@ -160,12 +160,29 @@ private:
 
 #include <qt/overviewpage.moc>
 
-OverviewPage::OverviewPage(QWidget* parent) :
+OverviewPage::OverviewPage(QWidget* parent, PageMode mode) :
     QWidget(parent),
     ui(new Ui::OverviewPage),
+    m_page_mode(mode),
     txdelegate(new TxViewDelegate(this))
 {
     ui->setupUi(this);
+
+    const bool tools_mode = mode != PageMode::OVERVIEW;
+    ui->frame->setVisible(!tools_mode);
+    ui->frameCoinJoin->setVisible(!tools_mode);
+    ui->frame_2->setVisible(!tools_mode);
+    ui->walletToolsTabs->setVisible(tools_mode);
+    if (mode == PageMode::OVERVIEW) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+    } else if (mode == PageMode::CREDENTIALS) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+    } else if (mode == PageMode::CHAT) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
+    } else if (mode == PageMode::VERIFY_PROOF) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+        ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
+    }
 
     GUIUtil::setFont({ui->label_4,
                       ui->label_5,
@@ -218,7 +235,9 @@ OverviewPage::OverviewPage(QWidget* parent) :
 
     // hide PS frame (helps to preserve saved size)
     // we'll setup and make it visible in coinJoinStatus() later
-    ui->frameCoinJoin->setVisible(false);
+    if (!tools_mode) {
+        ui->frameCoinJoin->setVisible(false);
+    }
 
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
@@ -898,6 +917,12 @@ void OverviewPage::updateAdvancedCJUI(bool fShowAdvancedCJUI)
 
 void OverviewPage::coinJoinStatus(bool fForce)
 {
+    if (m_page_mode != PageMode::OVERVIEW) {
+        ui->frameCoinJoin->setVisible(false);
+        if (timer != nullptr) timer->stop();
+        return;
+    }
+
     if (!walletModel || !clientModel) return;
 
     if (!fForce && (clientModel->node().shutdownRequested() || !clientModel->masternodeSync().isBlockchainSynced())) return;

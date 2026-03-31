@@ -62,6 +62,9 @@ private:
     WalletModel* const walletModel;
 
     OverviewPage *overviewPage;
+    OverviewPage *credentialsPage;
+    OverviewPage *chatPage;
+    OverviewPage *verifyProofPage;
     QWidget *transactionsPage;
     ReceiveCoinsDialog *receiveCoinsPage;
     SendCoinsDialog *sendCoinsPage;
