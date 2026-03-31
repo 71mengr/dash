@@ -166,11 +166,6 @@ OverviewPage::OverviewPage(QWidget* parent) :
     txdelegate(new TxViewDelegate(this))
 {
     ui->setupUi(this);
-    const int credential_tab_index = ui->walletToolsTabs->indexOf(ui->tabCredential);
-    if (credential_tab_index >= 0) ui->walletToolsTabs->removeTab(credential_tab_index);
-    const int chat_tab_index = ui->walletToolsTabs->indexOf(ui->tabChat);
-    if (chat_tab_index >= 0) ui->walletToolsTabs->removeTab(chat_tab_index);
-    ui->walletToolsTabs->setVisible(ui->walletToolsTabs->count() > 0);
 
     GUIUtil::setFont({ui->label_4,
                       ui->label_5,
@@ -266,21 +261,17 @@ void OverviewPage::setPrivacy(bool privacy)
 
 void OverviewPage::showCredentialsTab()
 {
-    if (ui->walletToolsTabs->indexOf(ui->tabCredential) < 0) return;
     ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
 }
 
 void OverviewPage::showChatTab()
 {
-    if (ui->walletToolsTabs->indexOf(ui->tabChat) < 0) return;
     ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
 }
 
 void OverviewPage::showProofTab()
 {
-    if (ui->walletToolsTabs->indexOf(ui->tabCredential) >= 0) {
-        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
-    }
+    ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
     ui->textOwnershipProofInput->setFocus();
 }
 
