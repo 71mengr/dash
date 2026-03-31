@@ -32,22 +32,12 @@ class OverviewPage : public QWidget
     Q_OBJECT
 
 public:
-    enum class PageMode {
-        OVERVIEW,
-        CREDENTIALS,
-        CHAT,
-        VERIFY_PROOF
-    };
-
-    explicit OverviewPage(QWidget* parent = nullptr, PageMode mode = PageMode::OVERVIEW);
+    explicit OverviewPage(QWidget* parent = nullptr);
     ~OverviewPage();
 
     void setClientModel(ClientModel *clientModel);
     void setWalletModel(WalletModel *walletModel);
     void showOutOfSyncWarning(bool fShow);
-    void showCredentialsTab();
-    void showChatTab();
-    void showProofTab();
 
 public Q_SLOTS:
     void coinJoinStatus(bool fForce = false);
@@ -57,31 +47,23 @@ public Q_SLOTS:
 Q_SIGNALS:
     void transactionClicked(const QModelIndex &index);
     void outOfSyncWarningClicked();
-    void signMessageRequested(const QString& address);
-    void verifyMessageRequested(const QString& address);
-    void message(const QString& title, const QString& message, unsigned int style);
 
 private:
     QTimer* timer{nullptr};
-    QTimer* chatInboxTimer{nullptr};
     Ui::OverviewPage *ui;
     ClientModel* clientModel{nullptr};
     WalletModel* walletModel{nullptr};
     interfaces::WalletBalances m_balances;
     bool m_privacy{false};
-    const PageMode m_page_mode;
     BitcoinUnit m_display_bitcoin_unit;
     bool fShowAdvancedCJUI;
     int cachedNumISLocks{-1};
-    bool m_chatInboxPolling{false};
 
     TxViewDelegate *txdelegate;
     std::unique_ptr<TransactionFilterProxy> filter;
 
     void SetupTransactionList(int nNumItems);
     void DisableCoinJoinCompletely();
-    void updateVerificationSection();
-    QString formatVerificationStatus(const interfaces::WalletVerification& verification) const;
 
 private Q_SLOTS:
     void toggleCoinJoin();
@@ -92,19 +74,6 @@ private Q_SLOTS:
     void updateAlerts(const QString &warnings);
     void updateWatchOnlyLabels(bool showWatchOnly);
     void setMonospacedFont(const QFont&);
-    void refreshChatIdentity();
-    void sendChatMessage();
-    void syncChatInbox();
-    void pollChatInbox();
-    void refreshChatMessages();
-    void attachVoiceNoteToDraft();
-    void clearVoiceDraft();
-    void openSignMessageDialog();
-    void openVerifyMessageDialog();
-    void generateOwnershipProof();
-    void copyOwnershipProof();
-    void populateOwnershipVerificationInput();
-    void verifyOwnershipProof();
 };
 
 #endif // BITCOIN_QT_OVERVIEWPAGE_H
