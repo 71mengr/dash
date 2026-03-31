@@ -172,15 +172,46 @@ OverviewPage::OverviewPage(QWidget* parent, PageMode mode) :
     ui->frame->setVisible(!tools_mode);
     ui->frameCoinJoin->setVisible(!tools_mode);
     ui->frame_2->setVisible(!tools_mode);
-    ui->walletToolsTabs->setVisible(tools_mode);
+
+    const auto set_ownership_visibility = [this](bool visible) {
+        ui->labelOwnershipProofIntro->setVisible(visible);
+        ui->labelOwnershipSubjectText->setVisible(visible);
+        ui->labelOwnershipSubjectValue->setVisible(visible);
+        ui->labelOwnershipChallengeText->setVisible(visible);
+        ui->editOwnershipChallenge->setVisible(visible);
+        ui->labelOwnershipClaimsText->setVisible(visible);
+        ui->checkOwnershipFullName->setVisible(visible);
+        ui->checkOwnershipCountry->setVisible(visible);
+        ui->checkOwnershipAgeOver18->setVisible(visible);
+        ui->checkOwnershipWalletAddress->setVisible(visible);
+        ui->buttonOwnershipGenerate->setVisible(visible);
+        ui->buttonOwnershipCopy->setVisible(visible);
+        ui->textOwnershipProofOutput->setVisible(visible);
+        ui->labelOwnershipVerifyIntro->setVisible(visible);
+        ui->textOwnershipProofInput->setVisible(visible);
+        ui->buttonOwnershipVerify->setVisible(visible);
+        ui->buttonOwnershipUseGenerated->setVisible(visible);
+        ui->labelOwnershipVerifyResult->setVisible(visible);
+    };
+
     if (mode == PageMode::OVERVIEW) {
-        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+        ui->walletToolsTabs->setVisible(false);
+        set_ownership_visibility(false);
     } else if (mode == PageMode::CREDENTIALS) {
+        ui->walletToolsTabs->setVisible(true);
+        const int chat_tab_index = ui->walletToolsTabs->indexOf(ui->tabChat);
+        if (chat_tab_index >= 0) ui->walletToolsTabs->removeTab(chat_tab_index);
         ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+        set_ownership_visibility(false);
     } else if (mode == PageMode::CHAT) {
+        ui->walletToolsTabs->setVisible(true);
+        const int credentials_tab_index = ui->walletToolsTabs->indexOf(ui->tabCredential);
+        if (credentials_tab_index >= 0) ui->walletToolsTabs->removeTab(credentials_tab_index);
         ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
+        set_ownership_visibility(false);
     } else if (mode == PageMode::VERIFY_PROOF) {
-        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+        ui->walletToolsTabs->setVisible(false);
+        set_ownership_visibility(true);
         ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
     }
 
@@ -280,18 +311,23 @@ void OverviewPage::setPrivacy(bool privacy)
 
 void OverviewPage::showCredentialsTab()
 {
-    ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+    if (m_page_mode == PageMode::CREDENTIALS) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
+    }
 }
 
 void OverviewPage::showChatTab()
 {
-    ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
+    if (m_page_mode == PageMode::CHAT) {
+        ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
+    }
 }
 
 void OverviewPage::showProofTab()
 {
-    ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
-    ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
+    if (m_page_mode == PageMode::VERIFY_PROOF) {
+        ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
+    }
 }
 
 OverviewPage::~OverviewPage()
