@@ -42,14 +42,8 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     assert(walletModel);
 
     // Create tabs
-    overviewPage = new OverviewPage(this, OverviewPage::PageMode::OVERVIEW);
+    overviewPage = new OverviewPage(this);
     overviewPage->setWalletModel(walletModel);
-    credentialsPage = new OverviewPage(this, OverviewPage::PageMode::CREDENTIALS);
-    credentialsPage->setWalletModel(walletModel);
-    chatPage = new OverviewPage(this, OverviewPage::PageMode::CHAT);
-    chatPage->setWalletModel(walletModel);
-    verifyProofPage = new OverviewPage(this, OverviewPage::PageMode::VERIFY_PROOF);
-    verifyProofPage->setWalletModel(walletModel);
 
     transactionsPage = new QWidget(this);
     QVBoxLayout *vbox = new QVBoxLayout();
@@ -100,9 +94,6 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     usedReceivingAddressesPage->setModel(walletModel->getAddressTableModel());
 
     addWidget(overviewPage);
-    addWidget(credentialsPage);
-    addWidget(chatPage);
-    addWidget(verifyProofPage);
     addWidget(transactionsPage);
     addWidget(receiveCoinsPage);
     addWidget(sendCoinsPage);
@@ -122,12 +113,6 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     // Clicking on a transaction on the overview pre-selects the transaction on the transaction history page
     connect(overviewPage, &OverviewPage::transactionClicked, transactionView, qOverload<const QModelIndex&>(&TransactionView::focusTransaction));
     connect(overviewPage, &OverviewPage::outOfSyncWarningClicked, this, &WalletView::outOfSyncWarningClicked);
-    connect(overviewPage, &OverviewPage::signMessageRequested, this, &WalletView::gotoSignMessageTab);
-    connect(overviewPage, &OverviewPage::verifyMessageRequested, this, &WalletView::gotoVerifyMessageTab);
-    connect(overviewPage, &OverviewPage::message, this, &WalletView::message);
-    connect(credentialsPage, &OverviewPage::message, this, &WalletView::message);
-    connect(chatPage, &OverviewPage::message, this, &WalletView::message);
-    connect(verifyProofPage, &OverviewPage::message, this, &WalletView::message);
 
     connect(sendCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);
     connect(coinJoinCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);
@@ -149,9 +134,6 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     connect(transactionView, &TransactionView::message, this, &WalletView::message);
 
     connect(this, &WalletView::setPrivacy, overviewPage, &OverviewPage::setPrivacy);
-    connect(this, &WalletView::setPrivacy, credentialsPage, &OverviewPage::setPrivacy);
-    connect(this, &WalletView::setPrivacy, chatPage, &OverviewPage::setPrivacy);
-    connect(this, &WalletView::setPrivacy, verifyProofPage, &OverviewPage::setPrivacy);
 
     // Receive and pass through messages from wallet model
     connect(walletModel, &WalletModel::message, this, &WalletView::message);
@@ -179,15 +161,6 @@ void WalletView::setClientModel(ClientModel *_clientModel)
 
     if (overviewPage != nullptr) {
         overviewPage->setClientModel(_clientModel);
-    }
-    if (credentialsPage != nullptr) {
-        credentialsPage->setClientModel(_clientModel);
-    }
-    if (chatPage != nullptr) {
-        chatPage->setClientModel(_clientModel);
-    }
-    if (verifyProofPage != nullptr) {
-        verifyProofPage->setClientModel(_clientModel);
     }
     if (sendCoinsPage != nullptr) {
         sendCoinsPage->setClientModel(_clientModel);
@@ -246,20 +219,17 @@ void WalletView::gotoOverviewPage()
 
 void WalletView::gotoCredentialsPage()
 {
-    setCurrentWidget(credentialsPage);
-    credentialsPage->showCredentialsTab();
+    setCurrentWidget(overviewPage);
 }
 
 void WalletView::gotoChatPage()
 {
-    setCurrentWidget(chatPage);
-    chatPage->showChatTab();
+    setCurrentWidget(overviewPage);
 }
 
 void WalletView::gotoVerifyProofPage()
 {
-    setCurrentWidget(verifyProofPage);
-    verifyProofPage->showProofTab();
+    setCurrentWidget(overviewPage);
 }
 
 void WalletView::gotoHistoryPage()
