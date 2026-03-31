@@ -16,14 +16,10 @@
 #include <qt/transactionrecord.h>
 #include <qt/transactiontablemodel.h>
 #include <qt/utilitydialog.h>
-#include <qt/addresstablemodel.h>
 #include <qt/walletmodel.h>
 
 #include <coinjoin/options.h>
 #include <interfaces/coinjoin.h>
-#include <interfaces/node.h>
-#include <node/interface_ui.h>
-#include <univalue.h>
 
 #include <algorithm>
 #include <map>
@@ -31,15 +27,11 @@
 
 #include <QAbstractItemDelegate>
 #include <QApplication>
-#include <QGuiApplication>
-#include <QClipboard>
-#include <QDateTime>
 #include <QMessageBox>
 #include <QPainter>
 #include <QSettings>
 #include <QStatusTipEvent>
 #include <QTimer>
-#include <QUrl>
 
 #define ITEM_HEIGHT 54
 #define NUM_ITEMS_DISABLED 5
@@ -47,18 +39,6 @@
 #define NUM_ITEMS_ENABLED_ADVANCED 8
 
 Q_DECLARE_METATYPE(interfaces::WalletBalances)
-
-namespace {
-const QString VOICE_NOTE_PREFIX{"[voice-note] "};
-
-std::string GetWalletRpcUri(const WalletModel& wallet_model)
-{
-    const QString wallet_name = wallet_model.getWalletName();
-    if (wallet_name.isEmpty()) return "/";
-    const QByteArray encoded_name = QUrl::toPercentEncoding(wallet_name);
-    return "/wallet/" + std::string(encoded_name.constData(), encoded_name.length());
-}
-} // namespace
 
 class TxViewDelegate : public QAbstractItemDelegate
 {
@@ -160,70 +140,19 @@ private:
 
 #include <qt/overviewpage.moc>
 
-OverviewPage::OverviewPage(QWidget* parent, PageMode mode) :
+OverviewPage::OverviewPage(QWidget* parent) :
     QWidget(parent),
     ui(new Ui::OverviewPage),
-    m_page_mode(mode),
     txdelegate(new TxViewDelegate(this))
 {
     ui->setupUi(this);
 
-    const bool tools_mode = mode != PageMode::OVERVIEW;
-    ui->frame->setVisible(!tools_mode);
-    ui->frameCoinJoin->setVisible(!tools_mode);
-    ui->frame_2->setVisible(!tools_mode);
-
-    const auto set_ownership_visibility = [this](bool visible) {
-        ui->labelOwnershipProofIntro->setVisible(visible);
-        ui->labelOwnershipSubjectText->setVisible(visible);
-        ui->labelOwnershipSubjectValue->setVisible(visible);
-        ui->labelOwnershipChallengeText->setVisible(visible);
-        ui->editOwnershipChallenge->setVisible(visible);
-        ui->labelOwnershipClaimsText->setVisible(visible);
-        ui->checkOwnershipFullName->setVisible(visible);
-        ui->checkOwnershipCountry->setVisible(visible);
-        ui->checkOwnershipAgeOver18->setVisible(visible);
-        ui->checkOwnershipWalletAddress->setVisible(visible);
-        ui->buttonOwnershipGenerate->setVisible(visible);
-        ui->buttonOwnershipCopy->setVisible(visible);
-        ui->textOwnershipProofOutput->setVisible(visible);
-        ui->labelOwnershipVerifyIntro->setVisible(visible);
-        ui->textOwnershipProofInput->setVisible(visible);
-        ui->buttonOwnershipVerify->setVisible(visible);
-        ui->buttonOwnershipUseGenerated->setVisible(visible);
-        ui->labelOwnershipVerifyResult->setVisible(visible);
-    };
-
-    if (mode == PageMode::OVERVIEW) {
-        ui->walletToolsTabs->setVisible(false);
-        set_ownership_visibility(false);
-    } else if (mode == PageMode::CREDENTIALS) {
-        ui->walletToolsTabs->setVisible(true);
-        const int chat_tab_index = ui->walletToolsTabs->indexOf(ui->tabChat);
-        if (chat_tab_index >= 0) ui->walletToolsTabs->removeTab(chat_tab_index);
-        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
-        set_ownership_visibility(false);
-    } else if (mode == PageMode::CHAT) {
-        ui->walletToolsTabs->setVisible(true);
-        const int credentials_tab_index = ui->walletToolsTabs->indexOf(ui->tabCredential);
-        if (credentials_tab_index >= 0) ui->walletToolsTabs->removeTab(credentials_tab_index);
-        ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
-        set_ownership_visibility(false);
-    } else if (mode == PageMode::VERIFY_PROOF) {
-        ui->walletToolsTabs->setVisible(false);
-        set_ownership_visibility(true);
-        ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
-    }
-
     GUIUtil::setFont({ui->label_4,
                       ui->label_5,
-                      ui->labelChatHeader,
                       ui->labelCoinJoinHeader
                      }, {GUIUtil::FontWeight::Bold, 16});
 
-    GUIUtil::setFont({ui->labelTotalText,
-                      ui->labelCredentialHeader,
-                      ui->labelOwnershipVerifyIntro}, {GUIUtil::FontWeight::Bold, 14});
+    GUIUtil::setFont({ui->labelTotalText}, {GUIUtil::FontWeight::Bold, 14});
 
     GUIUtil::setFont({ui->labelBalanceText,
                       ui->labelPendingText,
@@ -242,18 +171,6 @@ OverviewPage::OverviewPage(QWidget* parent, PageMode mode) :
     ui->listTransactions->setAttribute(Qt::WA_MacShowFocusRect, false);
 
     connect(ui->listTransactions, &TransactionOverviewWidget::clicked, this, &OverviewPage::handleTransactionClicked);
-    connect(ui->buttonChatSignMessage, &QPushButton::clicked, this, &OverviewPage::openSignMessageDialog);
-    connect(ui->buttonChatVerifyMessage, &QPushButton::clicked, this, &OverviewPage::openVerifyMessageDialog);
-    connect(ui->buttonChatClearDraft, &QPushButton::clicked, ui->textChatDraft, &QTextEdit::clear);
-    connect(ui->buttonChatSend, &QPushButton::clicked, this, &OverviewPage::sendChatMessage);
-    connect(ui->buttonChatInbox, &QPushButton::clicked, this, &OverviewPage::syncChatInbox);
-    connect(ui->buttonChatRefresh, &QPushButton::clicked, this, &OverviewPage::refreshChatMessages);
-    connect(ui->buttonChatVoiceAttach, &QPushButton::clicked, this, &OverviewPage::attachVoiceNoteToDraft);
-    connect(ui->buttonChatVoiceClear, &QPushButton::clicked, this, &OverviewPage::clearVoiceDraft);
-    connect(ui->buttonOwnershipGenerate, &QPushButton::clicked, this, &OverviewPage::generateOwnershipProof);
-    connect(ui->buttonOwnershipCopy, &QPushButton::clicked, this, &OverviewPage::copyOwnershipProof);
-    connect(ui->buttonOwnershipUseGenerated, &QPushButton::clicked, this, &OverviewPage::populateOwnershipVerificationInput);
-    connect(ui->buttonOwnershipVerify, &QPushButton::clicked, this, &OverviewPage::verifyOwnershipProof);
 
     // init "out of sync" warning labels
     ui->labelWalletStatus->setText("(" + tr("out of sync") + ")");
@@ -266,21 +183,13 @@ OverviewPage::OverviewPage(QWidget* parent, PageMode mode) :
 
     // hide PS frame (helps to preserve saved size)
     // we'll setup and make it visible in coinJoinStatus() later
-    if (!tools_mode) {
-        ui->frameCoinJoin->setVisible(false);
-    }
+    ui->frameCoinJoin->setVisible(false);
 
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
-    updateVerificationSection();
-    refreshChatIdentity();
 
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, [this]{ coinJoinStatus(); });
-
-    chatInboxTimer = new QTimer(this);
-    connect(chatInboxTimer, &QTimer::timeout, this, &OverviewPage::pollChatInbox);
-    chatInboxTimer->start(5000);
 }
 
 void OverviewPage::handleTransactionClicked(const QModelIndex &index)
@@ -307,27 +216,6 @@ void OverviewPage::setPrivacy(bool privacy)
     setStatusTip(status_tip);
     QStatusTipEvent event(status_tip);
     QApplication::sendEvent(this, &event);
-}
-
-void OverviewPage::showCredentialsTab()
-{
-    if (m_page_mode == PageMode::CREDENTIALS) {
-        ui->walletToolsTabs->setCurrentWidget(ui->tabCredential);
-    }
-}
-
-void OverviewPage::showChatTab()
-{
-    if (m_page_mode == PageMode::CHAT) {
-        ui->walletToolsTabs->setCurrentWidget(ui->tabChat);
-    }
-}
-
-void OverviewPage::showProofTab()
-{
-    if (m_page_mode == PageMode::VERIFY_PROOF) {
-        ui->textOwnershipProofInput->setFocus(Qt::TabFocusReason);
-    }
 }
 
 OverviewPage::~OverviewPage()
@@ -428,9 +316,6 @@ void OverviewPage::setWalletModel(WalletModel *model)
         interfaces::WalletBalances balances = wallet.getBalances();
         setBalance(balances);
         connect(model, &WalletModel::balanceChanged, this, &OverviewPage::setBalance);
-        connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::updateVerificationSection);
-        connect(model, &WalletModel::encryptionStatusChanged, this, &OverviewPage::refreshChatIdentity);
-        connect(model, &WalletModel::balanceChanged, this, &OverviewPage::refreshChatMessages);
 
         updateWatchOnlyLabels((wallet.haveWatchOnly() && !model->wallet().privateKeysDisabled()) || gArgs.GetBoolArg("-debug-ui", false));
         connect(model, &WalletModel::notifyWatchonlyChanged, [this](bool showWatchOnly) {
@@ -458,10 +343,6 @@ void OverviewPage::setWalletModel(WalletModel *model)
 
         // coinjoin buttons will not react to spacebar must be clicked on
         ui->toggleCoinJoin->setFocusPolicy(Qt::NoFocus);
-
-        updateVerificationSection();
-        refreshChatIdentity();
-        refreshChatMessages();
     }
 }
 
@@ -485,325 +366,6 @@ void OverviewPage::updateAlerts(const QString &warnings)
 {
     this->ui->labelAlerts->setVisible(!warnings.isEmpty());
     this->ui->labelAlerts->setText(warnings);
-}
-
-QString OverviewPage::formatVerificationStatus(const interfaces::WalletVerification& verification) const
-{
-    if (verification.status == "basic") return tr("Basic verified");
-    if (verification.status == "full") return tr("Full verified");
-    if (verification.status == "pending") return tr("Pending");
-    if (verification.status == "expired") return tr("Expired");
-    if (verification.status == "revoked") return tr("Revoked");
-    return tr("Not verified");
-}
-
-void OverviewPage::updateVerificationSection()
-{
-    const bool has_wallet = walletModel != nullptr;
-    ui->frameCredential->setVisible(has_wallet);
-    if (!has_wallet) {
-        return;
-    }
-
-    const interfaces::WalletVerification verification = walletModel->wallet().getVerification();
-    ui->labelCredentialStatusValue->setText(formatVerificationStatus(verification));
-    ui->labelCredentialProviderValue->setText(verification.issuer.empty() ? tr("Not available") : QString::fromStdString(verification.issuer));
-    ui->labelCredentialTypeValue->setText(verification.credential_type.empty() ? tr("Not available") : QString::fromStdString(verification.credential_type));
-    QString address_generation_status = tr("Blocked until verification");
-    if (verification.can_generate_addresses) {
-        address_generation_status = verification.is_verified ? tr("Created with verification") : tr("Allowed");
-    }
-    ui->labelCredentialAddressesValue->setText(address_generation_status);
-
-    const QString hash = verification.credential_hash.empty() ? tr("Not available") : QString::fromStdString(verification.credential_hash);
-    ui->labelCredentialHashValue->setText(hash);
-    ui->labelCredentialHashValue->setToolTip(hash);
-
-    QString expires_at{tr("Not available")};
-    if (verification.expires_at > 0) {
-        expires_at = QDateTime::fromSecsSinceEpoch(verification.expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate);
-    }
-    ui->labelCredentialExpiresValue->setText(expires_at);
-
-    const QString details = verification.is_verified
-        ? tr("Wallet verification is active.")
-        : QString::fromStdString(verification.failure_reason.empty() ? std::string{"Wallet verification has not completed yet."} : verification.failure_reason);
-    ui->labelCredentialDetailsValue->setText(details);
-
-    QString subject_address = verification.wallet_address.empty()
-        ? tr("No verified wallet address available")
-        : QString::fromStdString(verification.wallet_address);
-    ui->labelOwnershipSubjectValue->setText(subject_address);
-    ui->labelOwnershipSubjectValue->setToolTip(subject_address);
-
-    const bool ownership_enabled = verification.is_verified && subject_address != tr("No verified wallet address available");
-    ui->editOwnershipChallenge->setEnabled(ownership_enabled);
-    ui->checkOwnershipFullName->setEnabled(ownership_enabled);
-    ui->checkOwnershipCountry->setEnabled(ownership_enabled);
-    ui->checkOwnershipAgeOver18->setEnabled(ownership_enabled);
-    ui->checkOwnershipWalletAddress->setEnabled(ownership_enabled);
-    ui->buttonOwnershipGenerate->setEnabled(ownership_enabled);
-    ui->buttonOwnershipCopy->setEnabled(!ui->textOwnershipProofOutput->toPlainText().trimmed().isEmpty());
-}
-
-void OverviewPage::generateOwnershipProof()
-{
-    if (!walletModel) return;
-
-    const QString subject_address = ui->labelOwnershipSubjectValue->text().trimmed();
-    if (subject_address.isEmpty() || subject_address == tr("No verified wallet address available")) {
-        QMessageBox::warning(this, tr("Ownership Proof"), tr("A verified wallet address is required before you can create an ownership proof."));
-        return;
-    }
-
-    QStringList requested_claims;
-    if (ui->checkOwnershipFullName->isChecked()) requested_claims << "full_name";
-    if (ui->checkOwnershipCountry->isChecked()) requested_claims << "country";
-    if (ui->checkOwnershipAgeOver18->isChecked()) requested_claims << "age_over_18";
-    if (ui->checkOwnershipWalletAddress->isChecked()) requested_claims << "wallet_address";
-
-    std::vector<std::string> requested_claims_vec;
-    requested_claims_vec.reserve(requested_claims.size());
-    for (const QString& claim : requested_claims) {
-        requested_claims_vec.push_back(claim.toStdString());
-    }
-
-    const auto proof = walletModel->wallet().generateOwnershipProof(
-        ui->editOwnershipChallenge->text().toStdString(),
-        requested_claims_vec,
-        subject_address.toStdString(),
-        "");
-    if (!proof) {
-        QMessageBox::warning(this, tr("Ownership Proof"), QString::fromStdString(util::ErrorString(proof).original));
-        return;
-    }
-
-    ui->textOwnershipProofOutput->setPlainText(QString::fromStdString(proof->proof));
-    ui->buttonOwnershipCopy->setEnabled(true);
-    ui->labelOwnershipVerifyResult->setText(tr("Generated proof expires at %1.").arg(QDateTime::fromSecsSinceEpoch(proof->expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate)));
-}
-
-void OverviewPage::copyOwnershipProof()
-{
-    const QString proof = ui->textOwnershipProofOutput->toPlainText().trimmed();
-    if (proof.isEmpty()) return;
-    QGuiApplication::clipboard()->setText(proof);
-}
-
-void OverviewPage::populateOwnershipVerificationInput()
-{
-    ui->textOwnershipProofInput->setPlainText(ui->textOwnershipProofOutput->toPlainText());
-}
-
-void OverviewPage::verifyOwnershipProof()
-{
-    if (!walletModel) return;
-    const QString proof_blob = ui->textOwnershipProofInput->toPlainText().trimmed();
-    if (proof_blob.isEmpty()) {
-        QMessageBox::warning(this, tr("Ownership Proof"), tr("Paste a proof blob before verifying it."));
-        return;
-    }
-
-    const auto verification = walletModel->wallet().verifyOwnershipProof(proof_blob.toStdString());
-    if (!verification) {
-        QMessageBox::warning(this, tr("Ownership Proof"), QString::fromStdString(util::ErrorString(verification).original));
-        return;
-    }
-
-    QString result = verification->valid
-        ? tr("Valid proof for %1").arg(QString::fromStdString(verification->subject_address))
-        : tr("Invalid proof (%1)").arg(QString::fromStdString(verification->reason));
-
-    if (verification->valid) {
-        QStringList lines;
-        if (!verification->issuer.empty()) lines << tr("Issuer: %1").arg(QString::fromStdString(verification->issuer));
-        lines << tr("Challenge: %1").arg(QString::fromStdString(verification->challenge));
-        lines << tr("Expires: %1").arg(QDateTime::fromSecsSinceEpoch(verification->expires_at, Qt::UTC).toLocalTime().toString(Qt::DefaultLocaleShortDate));
-        if (!verification->claims.empty()) lines << tr("Claims: %1").arg(QString::fromStdString(verification->claims));
-        result += "\n" + lines.join("\n");
-    }
-
-    ui->labelOwnershipVerifyResult->setText(result);
-}
-
-void OverviewPage::refreshChatIdentity()
-{
-    const bool has_wallet = walletModel != nullptr;
-    ui->frameChat->setVisible(has_wallet);
-    if (!has_wallet) {
-        return;
-    }
-
-    QString identity_address{tr("No receiving address available yet")};
-    if (AddressTableModel* address_model = walletModel->getAddressTableModel()) {
-        for (int row = 0; row < address_model->rowCount(QModelIndex()); ++row) {
-            const QModelIndex type_index = address_model->index(row, AddressTableModel::Label, QModelIndex());
-            if (type_index.data(AddressTableModel::TypeRole).toString() == AddressTableModel::Receive) {
-                identity_address = address_model->index(row, AddressTableModel::Address, QModelIndex()).data(Qt::DisplayRole).toString();
-                break;
-            }
-        }
-    }
-
-    const interfaces::WalletVerification verification = walletModel->wallet().getVerification();
-    const QString verification_status = formatVerificationStatus(verification);
-    ui->labelChatIdentityValue->setText(identity_address);
-    ui->labelChatIdentityValue->setToolTip(identity_address);
-    ui->labelChatVerifiedValue->setText(verification_status);
-    ui->labelChatRouteValue->setText(clientModel != nullptr && clientModel->getNumConnections() > 0
-        ? tr("Connected to %n peer(s); chat packets can be routed once a transport is implemented.", "", clientModel->getNumConnections())
-        : tr("Waiting for network peers before routing wallet-authenticated chat."));
-    ui->labelChatVoiceValue->setText(tr("Compose a voice note transcript and attach it to your signed chat message as a voice payload."));
-    ui->buttonChatSend->setEnabled(!identity_address.startsWith(tr("No receiving address")));
-    ui->buttonChatInbox->setEnabled(!identity_address.startsWith(tr("No receiving address")));
-}
-
-void OverviewPage::sendChatMessage()
-{
-    if (!walletModel) return;
-    const QString recipient = ui->editChatRecipient->text().trimmed();
-    const QString draft = ui->textChatDraft->toPlainText().trimmed();
-    if (recipient.isEmpty() || draft.isEmpty()) {
-        QMessageBox::warning(this, tr("Wallet Chat"), tr("Recipient and draft message are required."));
-        return;
-    }
-
-    UniValue params(UniValue::VARR);
-    params.push_back("message");
-    params.push_back(recipient.toStdString());
-    params.push_back(draft.toStdString());
-    const QString shared_secret = ui->editChatEndpoint->text().trimmed();
-    if (!shared_secret.isEmpty()) {
-        params.push_back(shared_secret.toStdString());
-    }
-
-    try {
-        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
-        if (result.isObject() && result.exists("shared_secret_next")) {
-            const QString next_secret = QString::fromStdString(result["shared_secret_next"].get_str());
-            ui->editChatEndpoint->setText(next_secret);
-            ui->labelChatRouteValue->setText(tr("Shared secret rotated automatically for the next chat message."));
-        }
-        ui->textChatDraft->clear();
-        refreshChatMessages();
-    } catch (const std::exception& e) {
-        QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
-    }
-}
-
-void OverviewPage::syncChatInbox()
-{
-    if (!walletModel) return;
-    const bool interactive = !m_chatInboxPolling;
-    const QString identity_address = ui->labelChatIdentityValue->text().trimmed();
-    if (identity_address.isEmpty() || identity_address.startsWith(tr("No receiving address"))) {
-        if (interactive) {
-            QMessageBox::warning(this, tr("Wallet Chat"), tr("A wallet identity address is required before inbox sync."));
-        }
-        return;
-    }
-
-    UniValue params(UniValue::VARR);
-    params.push_back("networkinbox");
-    params.push_back(identity_address.toStdString());
-    const QString shared_secret = ui->editChatEndpoint->text().trimmed();
-    if (!shared_secret.isEmpty()) {
-        params.push_back(shared_secret.toStdString());
-    }
-
-    try {
-        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
-        QStringList network_lines;
-        network_lines << tr("Network inbox sync pulled %1 message(s).").arg(result.size());
-        for (size_t i = 0; i < result.size(); ++i) {
-            const UniValue& msg = result[i];
-            const QString sender = QString::fromStdString(msg["sender_address"].get_str());
-            const QString body = msg.exists("message")
-                ? QString::fromStdString(msg["message"].get_str())
-                : tr("[encrypted payload]");
-            network_lines << tr("↳ %1: %2").arg(sender, body);
-            Q_EMIT message(tr("Incoming chat message"), tr("%1: %2").arg(sender, body), CClientUIInterface::MSG_INFORMATION);
-            if (msg.exists("next_shared_secret")) {
-                ui->editChatEndpoint->setText(QString::fromStdString(msg["next_shared_secret"].get_str()));
-            }
-        }
-        ui->labelChatRouteValue->setText(network_lines.join("\n"));
-        refreshChatMessages();
-    } catch (const std::exception& e) {
-        if (interactive) {
-            QMessageBox::warning(this, tr("Wallet Chat"), QString::fromStdString(e.what()));
-        }
-    }
-}
-
-void OverviewPage::pollChatInbox()
-{
-    if (!walletModel || !isVisible()) return;
-    const QString identity_address = ui->labelChatIdentityValue->text().trimmed();
-    if (identity_address.isEmpty() || identity_address.startsWith(tr("No receiving address"))) return;
-
-    m_chatInboxPolling = true;
-    syncChatInbox();
-    m_chatInboxPolling = false;
-}
-
-void OverviewPage::refreshChatMessages()
-{
-    if (!walletModel) return;
-    const QString recipient = ui->editChatRecipient->text().trimmed();
-    UniValue params(UniValue::VARR);
-    params.push_back("list");
-    if (!recipient.isEmpty()) {
-        params.push_back(recipient.toStdString());
-    }
-
-    try {
-        const UniValue result = walletModel->node().executeRpc("chat", params, GetWalletRpcUri(*walletModel));
-        QStringList lines;
-        for (size_t i = 0; i < result.size(); ++i) {
-            const UniValue& msg = result[i];
-            const QString direction = QString::fromStdString(msg["direction"].get_str()) == "outbound" ? tr("You") : tr("Peer");
-            const QString address = QString::fromStdString(msg["address"].get_str());
-            QString body = QString::fromStdString(msg["message"].get_str());
-            if (body.startsWith(VOICE_NOTE_PREFIX)) {
-                body = tr("�� Voice note: %1").arg(body.mid(VOICE_NOTE_PREFIX.size()));
-            }
-            lines << tr("%1 • %2: %3").arg(direction, address, body);
-        }
-        if (lines.isEmpty()) lines << tr("No chat messages saved for this wallet yet.");
-        ui->textChatHistory->setPlainText(lines.join("\n"));
-    } catch (const std::exception& e) {
-        ui->textChatHistory->setPlainText(tr("Unable to read chat history: %1").arg(QString::fromStdString(e.what())));
-    }
-}
-
-void OverviewPage::openSignMessageDialog()
-{
-    const QString address = ui->labelChatIdentityValue->text();
-    Q_EMIT signMessageRequested(address.startsWith(tr("No receiving address")) ? QString() : address);
-}
-
-void OverviewPage::attachVoiceNoteToDraft()
-{
-    const QString transcript = ui->textChatVoiceDraft->toPlainText().trimmed();
-    if (transcript.isEmpty()) {
-        QMessageBox::warning(this, tr("Wallet Chat"), tr("Add a voice note transcript before attaching it."));
-        return;
-    }
-
-    ui->textChatDraft->setPlainText(VOICE_NOTE_PREFIX + transcript);
-    ui->labelChatVoiceValue->setText(tr("Voice note attached to the outgoing draft."));
-}
-
-void OverviewPage::clearVoiceDraft()
-{
-    ui->textChatVoiceDraft->clear();
-    ui->labelChatVoiceValue->setText(tr("Compose a voice note transcript and attach it to your signed chat message as a voice payload."));
-}
-
-void OverviewPage::openVerifyMessageDialog()
-{
-    Q_EMIT verifyMessageRequested(ui->editChatRecipient->text().trimmed());
 }
 
 void OverviewPage::showOutOfSyncWarning(bool fShow)
@@ -953,12 +515,6 @@ void OverviewPage::updateAdvancedCJUI(bool fShowAdvancedCJUI)
 
 void OverviewPage::coinJoinStatus(bool fForce)
 {
-    if (m_page_mode != PageMode::OVERVIEW) {
-        ui->frameCoinJoin->setVisible(false);
-        if (timer != nullptr) timer->stop();
-        return;
-    }
-
     if (!walletModel || !clientModel) return;
 
     if (!fForce && (clientModel->node().shutdownRequested() || !clientModel->masternodeSync().isBlockchainSynced())) return;
@@ -1225,3 +781,4 @@ void OverviewPage::DisableCoinJoinCompletely()
     }
     walletModel->coinJoin()->stopMixing();
 }
+
