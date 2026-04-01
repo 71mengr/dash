@@ -64,6 +64,7 @@ private:
     OverviewPage *overviewPage;
     QWidget* credentialsPage{nullptr};
     QWidget* chatPage{nullptr};
+    QWidget* verifyProofPage{nullptr};
     QWidget *transactionsPage;
     ReceiveCoinsDialog *receiveCoinsPage;
     SendCoinsDialog *sendCoinsPage;

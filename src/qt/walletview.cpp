@@ -50,11 +50,22 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
         auto* layout = new QVBoxLayout(credentialsPage);
         auto* header = new QLabel(tr("Credentials"), credentialsPage);
         header->setObjectName("walletToolsHeader");
-        auto* body = new QLabel(tr("Credentials content is available on this page."), credentialsPage);
+        auto* body = new QLabel(tr("Credential and wallet identity tools are available on this page."), credentialsPage);
         body->setWordWrap(true);
+        auto* signMessageButton = new QPushButton(tr("Sign Message"), credentialsPage);
+        auto* verifyMessageButton = new QPushButton(tr("Verify Message"), credentialsPage);
+        auto* showMnemonicButton = new QPushButton(tr("Show Recovery Phrase"), credentialsPage);
+
         layout->addWidget(header);
         layout->addWidget(body);
+        layout->addWidget(signMessageButton);
+        layout->addWidget(verifyMessageButton);
+        layout->addWidget(showMnemonicButton);
         layout->addStretch();
+
+        connect(signMessageButton, &QPushButton::clicked, this, [this] { gotoSignMessageTab(); });
+        connect(verifyMessageButton, &QPushButton::clicked, this, [this] { gotoVerifyMessageTab(); });
+        connect(showMnemonicButton, &QPushButton::clicked, this, &WalletView::showMnemonic);
     }
 
     chatPage = new QWidget(this);
@@ -62,11 +73,42 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
         auto* layout = new QVBoxLayout(chatPage);
         auto* header = new QLabel(tr("Wallet Chat"), chatPage);
         header->setObjectName("walletToolsHeader");
-        auto* body = new QLabel(tr("Chat content is available on this page."), chatPage);
+        auto* body = new QLabel(tr("Chat-related signing and verification helpers are available on this page."), chatPage);
         body->setWordWrap(true);
+        auto* signMessageButton = new QPushButton(tr("Sign Chat Message"), chatPage);
+        auto* verifyMessageButton = new QPushButton(tr("Verify Chat Message"), chatPage);
+        auto* copyAddressButton = new QPushButton(tr("Open Receive Address"), chatPage);
+
         layout->addWidget(header);
         layout->addWidget(body);
+        layout->addWidget(signMessageButton);
+        layout->addWidget(verifyMessageButton);
+        layout->addWidget(copyAddressButton);
         layout->addStretch();
+
+        connect(signMessageButton, &QPushButton::clicked, this, [this] { gotoSignMessageTab(); });
+        connect(verifyMessageButton, &QPushButton::clicked, this, [this] { gotoVerifyMessageTab(); });
+        connect(copyAddressButton, &QPushButton::clicked, this, &WalletView::gotoReceiveCoinsPage);
+    }
+
+    verifyProofPage = new QWidget(this);
+    {
+        auto* layout = new QVBoxLayout(verifyProofPage);
+        auto* header = new QLabel(tr("Verify Proof"), verifyProofPage);
+        header->setObjectName("walletToolsHeader");
+        auto* body = new QLabel(tr("Ownership proof verification and message verification tools are available on this page."), verifyProofPage);
+        body->setWordWrap(true);
+        auto* verifyMessageButton = new QPushButton(tr("Verify Signed Message"), verifyProofPage);
+        auto* openHistoryButton = new QPushButton(tr("Open Transaction History"), verifyProofPage);
+
+        layout->addWidget(header);
+        layout->addWidget(body);
+        layout->addWidget(verifyMessageButton);
+        layout->addWidget(openHistoryButton);
+        layout->addStretch();
+
+        connect(verifyMessageButton, &QPushButton::clicked, this, [this] { gotoVerifyMessageTab(); });
+        connect(openHistoryButton, &QPushButton::clicked, this, &WalletView::gotoHistoryPage);
     }
 
     transactionsPage = new QWidget(this);
@@ -120,6 +162,7 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     addWidget(overviewPage);
     addWidget(credentialsPage);
     addWidget(chatPage);
+    addWidget(verifyProofPage);
     addWidget(transactionsPage);
     addWidget(receiveCoinsPage);
     addWidget(sendCoinsPage);
@@ -255,7 +298,7 @@ void WalletView::gotoChatPage()
 
 void WalletView::gotoVerifyProofPage()
 {
-    setCurrentWidget(overviewPage);
+    setCurrentWidget(verifyProofPage);
 }
 
 void WalletView::gotoHistoryPage()
