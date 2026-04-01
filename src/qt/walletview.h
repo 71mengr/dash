@@ -62,6 +62,8 @@ private:
     WalletModel* const walletModel;
 
     OverviewPage *overviewPage;
+    QWidget* credentialsPage{nullptr};
+    QWidget* chatPage{nullptr};
     QWidget *transactionsPage;
     ReceiveCoinsDialog *receiveCoinsPage;
     SendCoinsDialog *sendCoinsPage;

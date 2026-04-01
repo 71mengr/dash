@@ -45,6 +45,30 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     overviewPage = new OverviewPage(this);
     overviewPage->setWalletModel(walletModel);
 
+    credentialsPage = new QWidget(this);
+    {
+        auto* layout = new QVBoxLayout(credentialsPage);
+        auto* header = new QLabel(tr("Credentials"), credentialsPage);
+        header->setObjectName("walletToolsHeader");
+        auto* body = new QLabel(tr("Credentials content is available on this page."), credentialsPage);
+        body->setWordWrap(true);
+        layout->addWidget(header);
+        layout->addWidget(body);
+        layout->addStretch();
+    }
+
+    chatPage = new QWidget(this);
+    {
+        auto* layout = new QVBoxLayout(chatPage);
+        auto* header = new QLabel(tr("Wallet Chat"), chatPage);
+        header->setObjectName("walletToolsHeader");
+        auto* body = new QLabel(tr("Chat content is available on this page."), chatPage);
+        body->setWordWrap(true);
+        layout->addWidget(header);
+        layout->addWidget(body);
+        layout->addStretch();
+    }
+
     transactionsPage = new QWidget(this);
     QVBoxLayout *vbox = new QVBoxLayout();
     QHBoxLayout *hbox_buttons = new QHBoxLayout();
@@ -94,6 +118,8 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
     usedReceivingAddressesPage->setModel(walletModel->getAddressTableModel());
 
     addWidget(overviewPage);
+    addWidget(credentialsPage);
+    addWidget(chatPage);
     addWidget(transactionsPage);
     addWidget(receiveCoinsPage);
     addWidget(sendCoinsPage);
@@ -219,12 +245,12 @@ void WalletView::gotoOverviewPage()
 
 void WalletView::gotoCredentialsPage()
 {
-    setCurrentWidget(overviewPage);
+    setCurrentWidget(credentialsPage);
 }
 
 void WalletView::gotoChatPage()
 {
-    setCurrentWidget(overviewPage);
+    setCurrentWidget(chatPage);
 }
 
 void WalletView::gotoVerifyProofPage()
