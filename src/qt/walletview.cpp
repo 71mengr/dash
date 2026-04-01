@@ -26,6 +26,7 @@
 
 #include <interfaces/node.h>
 #include <node/interface_ui.h>
+#include <univalue.h>
 #include <util/strencodings.h>
 
 #include <QHBoxLayout>
@@ -44,15 +45,27 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
 {
     assert(walletModel);
     const auto executeWalletRpc = [this](const QString& title, const QString& command) {
-        std::string result;
-        std::string filtered;
-        const bool ok = RPCConsole::RPCExecuteCommandLine(walletModel->node(), result, command.toStdString(), &filtered, walletModel);
-        QMessageBox::information(
-            this,
-            title,
-            ok
-                ? tr("Command:\n%1\n\nResult:\n%2").arg(command, QString::fromStdString(result))
-                : tr("Command failed:\n%1\n\nError:\n%2").arg(command, QString::fromStdString(result)));
+        try {
+            std::string result;
+            std::string filtered;
+            const bool ok = RPCConsole::RPCExecuteCommandLine(walletModel->node(), result, command.toStdString(), &filtered, walletModel);
+            QMessageBox::information(
+                this,
+                title,
+                ok
+                    ? tr("Command:\n%1\n\nResult:\n%2").arg(command, QString::fromStdString(result))
+                    : tr("Command failed:\n%1\n\nError:\n%2").arg(command, QString::fromStdString(result)));
+        } catch (const UniValue& obj_error) {
+            std::string message;
+            try {
+                message = obj_error.find_value("message").get_str();
+            } catch (const std::runtime_error&) {
+                message = obj_error.write();
+            }
+            QMessageBox::critical(this, title, tr("Command failed:\n%1\n\nError:\n%2").arg(command, QString::fromStdString(message)));
+        } catch (const std::exception& e) {
+            QMessageBox::critical(this, title, tr("Command failed:\n%1\n\nError:\n%2").arg(command, QString::fromStdString(e.what())));
+        }
     };
     const auto rpcQuote = [](QString value) {
         value.replace("\\", "\\\\");
