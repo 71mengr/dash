@@ -86,7 +86,7 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
         layout->addWidget(showMnemonicButton);
         layout->addStretch();
 
-        connect(setProviderButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(setProviderButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString provider = QInputDialog::getText(this, tr("Set KYC Provider"), tr("Provider (e.g. coinfirm, didit, internal):"), QLineEdit::Normal, "coinfirm", &ok);
             if (!ok || provider.trimmed().isEmpty()) return;
@@ -99,13 +99,13 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
             if (!arg2.trimmed().isEmpty()) cmd += " " + rpcQuote(arg2.trimmed());
             executeWalletRpc(tr("Set KYC Provider"), cmd);
         });
-        connect(startKycButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(startKycButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString level = QInputDialog::getText(this, tr("Start KYC Session"), tr("KYC level (basic/advanced/full):"), QLineEdit::Normal, "full", &ok);
             if (!ok || level.trimmed().isEmpty()) return;
             executeWalletRpc(tr("Start KYC Session"), QString("startkyc %1").arg(rpcQuote(level.trimmed())));
         });
-        connect(importCredentialButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(importCredentialButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString credential = QInputDialog::getMultiLineText(this, tr("Import KYC Credential"), tr("Credential (JWT/VC JSON):"), "", &ok);
             if (!ok || credential.trimmed().isEmpty()) return;
@@ -141,7 +141,7 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
         layout->addWidget(copyAddressButton);
         layout->addStretch();
 
-        connect(sendChatButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(sendChatButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString address = QInputDialog::getText(this, tr("Send Wallet Chat Message"), tr("Peer address:"), QLineEdit::Normal, "", &ok);
             if (!ok || address.trimmed().isEmpty()) return;
@@ -153,7 +153,7 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
             if (!shared.trimmed().isEmpty()) cmd += " " + rpcQuote(shared.trimmed());
             executeWalletRpc(tr("Send Wallet Chat Message"), cmd);
         });
-        connect(syncInboxButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(syncInboxButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString address = QInputDialog::getText(this, tr("Sync Wallet Chat Inbox"), tr("Recipient wallet address:"), QLineEdit::Normal, "", &ok);
             if (!ok || address.trimmed().isEmpty()) return;
@@ -193,20 +193,20 @@ WalletView::WalletView(WalletModel* wallet_model, QWidget* parent)
         layout->addWidget(openHistoryButton);
         layout->addStretch();
 
-        connect(generateProofButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(generateProofButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString request_json = QInputDialog::getMultiLineText(
                 this, tr("Generate Ownership Proof"), tr("Proof request JSON:"), "{\"challenge\":\"nonce-123\",\"requested_claims\":[\"full_name\",\"country\"],\"subject_address\":\"<wallet_address>\"}", &ok);
             if (!ok || request_json.trimmed().isEmpty()) return;
             executeWalletRpc(tr("Generate Ownership Proof"), QString("generateownershipproof %1").arg(rpcQuote(request_json)));
         });
-        connect(verifyOwnershipProofButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(verifyOwnershipProofButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString proof = QInputDialog::getMultiLineText(this, tr("Verify Ownership Proof"), tr("Proof blob:"), "", &ok);
             if (!ok || proof.trimmed().isEmpty()) return;
             executeWalletRpc(tr("Verify Ownership Proof"), QString("verifyownershipproof %1").arg(rpcQuote(proof)));
         });
-        connect(confirmOwnershipButton, &QPushButton::clicked, this, [this, executeWalletRpc] {
+        connect(confirmOwnershipButton, &QPushButton::clicked, this, [this, executeWalletRpc, rpcQuote] {
             bool ok = false;
             const QString hash = QInputDialog::getText(this, tr("Confirm Local Ownership"), tr("Credential hash:"), QLineEdit::Normal, "", &ok);
             if (!ok || hash.trimmed().isEmpty()) return;
