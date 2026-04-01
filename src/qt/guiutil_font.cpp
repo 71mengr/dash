@@ -576,14 +576,24 @@ void updateFonts()
         ++nUpdatable;
 
         QFont font = w->font();
-        assert(font.pointSize() > 0);
+        double widget_font_size = font.pointSizeF();
+        if (widget_font_size <= 0) {
+            // Some widgets can carry pixel-sized fonts where pointSizeF() is invalid (-1).
+            // Fallback to pixel size first, and finally to the application default font size.
+            if (const int pixel_size{font.pixelSize()}; pixel_size > 0) {
+                widget_font_size = pixel_size;
+            } else {
+                widget_font_size = qApp->font().pointSizeF();
+            }
+        }
+        assert(widget_font_size > 0);
         font.setFamily(qApp->font().family());
         font.setWeight(g_font_registry.GetWeightNormal());
         font.setStyleName(qApp->font().styleName());
         font.setStyle(qApp->font().style());
 
         // Insert/Get the default font size of the widget
-        auto itDefault = mapWidgetDefaultFontSizes.emplace(w, font.pointSize());
+        auto itDefault = mapWidgetDefaultFontSizes.emplace(w, widget_font_size);
 
         auto it = mapFontUpdates.find(w);
         if (it != mapFontUpdates.end()) {
